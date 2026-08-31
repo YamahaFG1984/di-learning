@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+         http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
+
+    <!--<bean id="data.comics" class="ComicAccessImpl" scope="singleton">-->
+    <!--</bean>-->
+
+    <!--<bean id="web.user" class="UserContext" scope="session">-->
+        <!--<constructor-arg ref="data.comics"/>-->
+    <!--</bean>-->
+
+    <!--<bean id="web.comicSearch" class="ComicSearch" scope="request">-->
+        <!--<constructor-arg ref="data.comics"/>-->
+        <!--<constructor-arg ref="web.user"/>-->
+    <!--</bean>-->
+
+    <bean id="slothful" class="screen.Sloth" lazy-init="true">
+    </bean>
+
+</beans>

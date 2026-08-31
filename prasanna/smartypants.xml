@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Canvas xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:smartypants="http://net.expantra.smartypants/2008">
+
+    <smartypants:RequestInjection/>
+
+    <!-- ...Regular code and MXML... -->
+
+</mx:Canvas>

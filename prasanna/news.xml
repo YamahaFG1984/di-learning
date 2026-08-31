@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
+
+  <bean name="/news.html" init-method="init" destroy-method="destroy" class="screen.NewsController">
+      <constructor-arg ref="persistence"/>
+      <constructor-arg ref="newsService"/>
+  </bean>
+
+  <bean name="persistence" class="screen.PersistenceService"/>
+  <bean name="newsService" class="screen.NewsService"/>
+  <bean name="fileSystem" class="screen.FileSystem"/>
+
+
+    <bean id="thumbnail" class="screen.Thumbnail" destroy-method="close">
+        <constructor-arg ref="fileSystem"/>
+    </bean>
+
+</beans>

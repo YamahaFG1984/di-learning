@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+         http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
+
+    <bean id="slippery" class="example.Slippery" scope="prototype"/>
+    <bean id="shady" class="example.Shady" scope="prototype"/>
+
+    <bean id="safe" class="example.UnsafeObject" init-method="init" scope="prototype">
+        <property name="slippery" ref="slippery"/>
+        <property name="shady" ref="shady"/>
+    </bean>
+
+</beans>

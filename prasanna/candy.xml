@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+         http://www.springframework.org/schema/beans/spring-beans-2.5.xsd">
+    <bean id="pez" class="candy.Pez">
+        <constructor-arg><bean class="candy.Sugar"/></constructor-arg>
+    </bean>
+
+    <bean id="dispenser" class="candy.Dispenser">
+        <lookup-method name="dispense" bean="pez"/>
+    </bean>
+</beans>

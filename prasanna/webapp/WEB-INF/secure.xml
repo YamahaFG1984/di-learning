@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+     xmlns:security="http://www.springframework.org/schema/security"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.springframework.org/schema/beans
+http://www.springframework.org/schema/beans/spring-beans-2.5.xsd
+      http://www.springframework.org/schema/security
+http://www.springframework.org/schema/security/spring-security-2.0.xsd">
+
+    <security:http auto-config="true">
+        <security:intercept-url pattern="/**" access="ROLE_USER" />
+    </security:http>
+
+    <security:authentication-provider>
+        <security:user-service>
+            <security:user name="josh" password="supersecret" authorities="ROLE_USER, ROLE_ADMIN" />
+            <security:user name="bob" password="bobby" authorities="ROLE_USER" />
+        </security:user-service>
+    </security:authentication-provider>
+
+    <security:global-method-security>
+        <security:protect-pointcut expression="execution(* example.PhoneService.*(..))"
+                              access="ROLE_ADMIN" />
+    </security:global-method-security>
+</beans>

@@ -1,0 +1,8 @@
+<beans>
+ 	<bean id="nintendo.wii" class="com.nintendo.Wii">
+		<constructor-arg ref="game.HalfLife"/>
+	</bean>
+
+	<bean id="game.HalfLife" class="com.valve.wii.HalfLife"/>	#1
+
+</beans>

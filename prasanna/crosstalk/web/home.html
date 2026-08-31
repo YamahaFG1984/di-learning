@@ -1,0 +1,30 @@
+<html>
+<head>
+    <title>Tweets</title>
+
+    <link rel="stylesheet" href="/crosstalk.css"/>
+</head>
+<body>
+    <h2>Tweets by ${user}</h2>
+
+    <div class="box">
+        <div class="box-content">
+            <div>What are you doing right now?</div>
+
+            <form action="/home" method="post">
+                <textarea name="newTweet.text" rows="5" cols="60" />
+                <input type="submit" value="update"/>
+            </form>
+        </div>
+    </div>
+
+    @Repeat(items=tweets, var="tweet") 
+    <div class="box">
+        <div class="box-content">
+            ${tweet.text} (${tweet.createdOn})
+        </div>
+    </div>
+
+    <a href="http://manning.com/prasanna">Help</a> | <a href="?action=logout">Sign out</a>
+</body>
+</html>
