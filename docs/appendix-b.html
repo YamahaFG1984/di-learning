@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>其他容器与术语表 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a class="on" aria-current="page" href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="appendix">
+  <p class="eyebrow">附录 B</p>
+  <h2 class="title">其他容器与术语表</h2>
+  <p class="lede">原书两个附录（Butterfly Container 与 SmartyPants）介绍了第 2 章"五种配置方式"里没有充分展开的那一种——<strong>DSL 配置</strong>。加上一份全书术语速查。</p>
+
+  <h3><span class="sec">B.1</span>Butterfly Container：为 DI 定制的 DSL</h3>
+  <p>由 Jakob Jenkov 贡献。它不是 XML，而是一门专门的小语言 BCS（Butterfly Container Script），语法刻意做成"属性文件 + Java 代码"的混合体：</p>
+<pre><code>myBean1 = * com.myapp.MyBean();
+<i>//  ①    ②③        ④        ⑤</i></code></pre>
+  <ol>
+    <li>工厂 ID —— 容器内唯一的键；</li>
+    <li>等号 —— 产品定义开始；</li>
+    <li><strong>实例化模式</strong> —— 就是作用域（见下表）；</li>
+    <li>工厂链 —— 描述怎么造出这个对象；</li>
+    <li>分号。</li>
+  </ol>
+  <div class="tw compact"><table>
+    <thead><tr><th>符号</th><th>含义</th><th>对应第 5 章</th></tr></thead>
+    <tbody>
+      <tr><td><code>*</code></td><td>每次调用新建</td><td>无作用域 / prototype</td></tr>
+      <tr><td><code>1</code></td><td>单例</td><td>singleton</td></tr>
+      <tr><td><code>1T</code></td><td>每线程一个</td><td>线程作用域</td></tr>
+      <tr><td><code>1F</code></td><td>享元：同参数返回同实例</td><td>—（较少见）</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>工厂链</strong>是这门 DSL 最有意思的地方——它允许链式调用返回 <code>void</code> 的方法（DSL 自定义语法的自由度）：</p>
+<pre><code>myBean2 = * com.myapp.MyBean2("A Text", myBean1)
+            .setMoreText("more text")
+            .setAValue(1)
+            .setMoreOfSomething("more...");</code></pre>
+  <p>它还内建了第 3 章两个模式的原生支持：</p>
+  <div class="split">
+    <div class="good"><h5>上下文注入（Assisted）</h5>
+<pre><code>myBean1 = * com.myapp.MyBean($0).setValue($1);
+myBean2 = * myBean1(com.myapp.SomeBean(), "Value Text");
+<i>// $0 $1 就是运行时传入的上下文参数</i></code></pre>
+    </div>
+    <div class="good"><h5>重注入（Provider）</h5>
+<pre><code>firstBean  = * com.myapp.FirstBean($0).setValue($1);
+secondBean = * com.myapp.SecondBean()
+                 .setFirstBeanFactory(<b>#firstBean</b>);
+<i>// # 前缀 = 注入工厂本身，而不是产品</i></code></pre>
+    </div>
+  </div>
+  <p>更妙的一手：容器会把工厂<strong>适配到你自己的接口</strong>，从而不在你的代码里留下任何容器类型：</p>
+<pre><code>public interface FirstBeanFactory {
+    FirstBean instance(long constructorParam, String value);   <i>// 完全类型安全，零框架依赖</i>
+}</code></pre>
+  <div class="box note">
+    <span class="tag">这个附录今天的价值</span>
+    <p>Butterfly Container 本身没有流行起来，但它演示的两件事都成了主流：<strong>① 注入"工厂"而不是"产品"</strong>（今天是 <code>Provider</code> / <code>ObjectProvider</code> / <code>Supplier</code>）；<strong>② 让容器实现你定义的工厂接口</strong>（今天是 Guice 的 <code>FactoryModuleBuilder</code>、Dagger 的 <code>@AssistedFactory</code>）。</p>
+    <p>作者自己也点出了 DSL 的代价：<code>$0</code>、<code>$1</code> 既没有名字也没有类型，<strong>"这会导致工厂定义里出现类型错误"</strong>——回到了第 2 章字符串键的老问题。这大概也是纯 DSL 路线最终没能胜出的原因：<em>为 DI 造一门新语言，就得为它重建一整套类型检查和工具链。</em></p>
+  </div>
+
+  <h3><span class="sec">B.2</span>SmartyPants：Adobe Flex 上的 DI</h3>
+  <p>由 Josh McDonald 贡献，为 Flex/Flash 应用做的 DI 框架，明确以 Guice 为蓝本。三个核心概念：</p>
+  <ul>
+    <li><strong>class + name 键</strong> —— 就是第 2 章的组合键（类型必填，名字可选）；</li>
+    <li><strong>元数据请求注入</strong> —— <code>[Inject]</code> / <code>[Inject(name="mainWSDL")]</code>；</li>
+    <li><strong>ActionScript DSL 写规则</strong>：</li>
+  </ul>
+<pre><code>injector.newRule().whenAskedFor(String).named("wsdl")
+                  .useInstance("http://www.server.com/soap/service.wsdl");
+injector.newRule().whenAskedFor(IServiceInterface).useSingletonOf(MyServiceImpl);</code></pre>
+  <p>它还有一个 Java 侧没有的特性——<strong>live injection</strong>：</p>
+<pre><code>[Inject(name="userName", <b>live</b>)]
+public var currentUsername:String;   <i>// 源值变化时字段自动更新，类似数据绑定</i></code></pre>
+  <p><em>Flash 平台已于 2020 年底停止支持，SmartyPants 自然随之消失。但"注入 + 响应式绑定"这个组合活了下来——今天在前端（React 的 Context + hooks、Angular 的 DI + signals）随处可见。</em></p>
+
+  <h3><span class="sec">B.3</span>术语速查</h3>
+  <div class="tw"><table>
+    <thead><tr><th>术语</th><th>含义</th><th>章</th></tr></thead>
+    <tbody>
+      <tr><td>对象图 object graph</td><td>一组互相引用的对象构成的结构</td><td>1</td></tr>
+      <tr><td>好莱坞原则</td><td>"别打给我们，我们会打给你"——依赖被送到客户手上</td><td>1</td></tr>
+      <tr><td>病毒式注入 viral injection</td><td>从根对象开始，依赖沿引用链级联构造</td><td>1</td></tr>
+      <tr><td>键 key</td><td>标识一个服务实现的标签；可为字符串、类型或两者的组合</td><td>2</td></tr>
+      <tr><td>绑定 binding</td><td>键与具体对象图之间的关联</td><td>2</td></tr>
+      <tr><td>组合键</td><td>类型 + 限定注解；今天的 <code>@Qualifier</code></td><td>2</td></tr>
+      <tr><td>自动装配 autowiring</td><td>由类结构推断依赖</td><td>2</td></tr>
+      <tr><td>构造器金字塔</td><td>为多个"依赖剖面"写多个构造器导致的膨胀</td><td>3</td></tr>
+      <tr><td>循环引用 / in-construction</td><td>互相依赖；以及在构造期就互相调用的更严重变体</td><td>3</td></tr>
+      <tr><td>重注入 reinjection</td><td>长命对象需要反复获取短命依赖</td><td>3</td></tr>
+      <tr><td>上下文注入 contextual injection</td><td>依赖需要一个运行时才知道的参数</td><td>3</td></tr>
+      <tr><td>密封代码 sealed code</td><td>无法修改源码的第三方类（与 Java 的 <code>sealed</code> 关键字无关）</td><td>3</td></tr>
+      <tr><td>out-of-container 测试</td><td>不启动容器、只用 mock 的单元测试</td><td>4</td></tr>
+      <tr><td>作用域 scope</td><td>同一个键返回同一实例的时间段/上下文</td><td>5</td></tr>
+      <tr><td>无作用域 / prototype</td><td>每次请求都新建</td><td>5</td></tr>
+      <tr><td>单例反模式</td><td>静态 <code>getInstance()</code>；活在容器之外</td><td>5</td></tr>
+      <tr><td><strong>scope-widening</strong></td><td>窄作用域对象被宽作用域对象持有；全书最重要的陷阱</td><td>6</td></tr>
+      <tr><td>out-of-scope 对象</td><td>在作用域上下文之外被请求的对象</td><td>6</td></tr>
+      <tr><td>安全发布 safe publication</td><td>对象的字段对所有线程可见；<code>final</code> 提供此保证</td><td>9</td></tr>
+      <tr><td>织入 weaving / 通知 advice</td><td>把横切逻辑插入方法；被插入的逻辑</td><td>8</td></tr>
+      <tr><td>切点 pointcut / 匹配器 matcher</td><td>描述"哪些方法要被拦截"</td><td>8</td></tr>
+      <tr><td>自调用 self-invocation</td><td><code>this.method()</code> 绕过代理导致注解失效（书外补充）</td><td>8</td></tr>
+      <tr><td>刚性配置</td><td>用字符串资源文件指定插件类，丧失类型安全与 DI 能力</td><td>10</td></tr>
+      <tr><td>脆弱基类</td><td>继承使基类的全部 API 被迫并入子类契约</td><td>10</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="pager"><a href="appendix-a.html"><span>上一章</span>附录 A · 2009 → 2026 迁移总表</a><a class="next" href="index.html"><span>回到</span>目录</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

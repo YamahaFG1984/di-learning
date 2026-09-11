@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>与第三方框架集成 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a class="on" aria-current="page" href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch10">
+  <p class="eyebrow">第 10 章</p>
+  <h2 class="title">与第三方框架集成</h2>
+  <p class="lede">前九章假设你能控制所有代码。现实是：大部分工作靠第三方框架完成，而<strong>这些框架往往自带一套半成品的 IoC</strong>——它们规定谁来创建你的插件类，于是顺手剥夺了你的构造器、你的 <code>final</code>、你的作用域和你的可测试性。这一章是写给框架使用者的诊断书，也是写给框架作者的一封信。</p>
+  <ul class="chips">
+    <li>DI 方案碎片化</li>
+    <li>刚性配置反模式</li>
+    <li>类型不安全</li>
+    <li>不当约束</li>
+    <li>脆弱基类</li>
+    <li>程序化配置</li>
+    <li>JSR-303 案例</li>
+  </ul>
+
+  <h3><span class="sec">10.1</span><code>web.xml</code>：DI 的史前形态</h3>
+  <p>看这段配置，它其实就是一个原始的注入器配置：</p>
+<pre><code>&lt;servlet&gt;
+    &lt;servlet-name&gt;helloServlet&lt;/servlet-name&gt;
+    &lt;servlet-class&gt;com.wideplay.example.servlets.HelloServlet&lt;/servlet-class&gt;
+&lt;/servlet&gt;</code></pre>
+  <p>和 Spring 的 <code>&lt;bean id="…" class="…"/&gt;</code> 一模一样——<strong>只差一件事：它不允许你为 servlet 配置任何依赖。</strong>而任何一个真实的 Web 应用都有一堆依赖。这个"少一半"的设计，强加了四条限制：</p>
+  <ul>
+    <li>servlet 必须有一个 <code>public</code> 的无参构造器；</li>
+    <li>servlet 类必须是 <code>public</code> 的具体类（不能是接口或抽象类）；</li>
+    <li>servlet 的方法<strong>无法被拦截</strong>（第 8 章的能力全部作废）；</li>
+    <li>servlet 实际上只能是单例。</li>
+  </ul>
+  <p>后果就是：<strong>servlet 极难测试</strong>，于是一大批 Web 框架诞生出来绕开它，而每一个都自带一套自己的、部分的 DI 方案。作者列了一张表，今天读起来像一份考古报告——表里的框架大部分已经消失或边缘化，只有一件事留了下来：<em>那种"各家自造轮子"的碎片化，是当年最真实的痛点。</em></p>
+  <p>作者对根因的判断很克制：不是框架作者水平不行，而是<strong>"可测试性、松耦合、作用域的价值，我们也是最近才学会的"</strong>——Guice 那时才两岁多。</p>
+
+  <h3><span class="sec">10.2</span>反模式一：刚性配置</h3>
+  <p>框架都提供扩展点：你写一个小组件，实现框架的接口，插进去。问题出在<strong>怎么告诉框架用你这个插件</strong>。绝大多数 2009 年的框架用的是资源文件里的字符串：</p>
+<pre><code># oscache.properties
+cache.memory=false
+cache.capacity=100
+<b>cache.persistence.class=com.opensymphony.oscache.plugins.diskpersistence.DiskPersistenceListener</b></code></pre>
+  <p>前两行没问题——它们配的是<strong>值</strong>（数量、开关），字符串很合适。第三行不一样，它配的是<strong>一个类，也就是框架的一个依赖</strong>。于是三类失败接踵而至。</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 860 280" role="img" aria-label="刚性配置的三种失败：值拼错运行时才炸、属性名拼错静默失效、反射构造对插件类强加四条限制" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <rect x="16" y="30" width="240" height="66" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="30" y="52" font-size="9.5" opacity=".65">.properties 里的一行字符串</text>
+      <text x="30" y="72" font-size="9.5">cache.persistence.class=</text>
+      <text x="30" y="87" font-size="9.5">  com.example.MyListener</text>
+
+      <line x1="258" y1="63" x2="300" y2="63" stroke="currentColor" stroke-width="1.2" marker-end="url(#d1)"/>
+      <text x="279" y="55" text-anchor="middle" font-size="8.5" opacity=".65">反射</text>
+
+      <rect x="304" y="30" width="200" height="66" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="404" y="55" text-anchor="middle" font-size="10">Class.forName()</text>
+      <text x="404" y="72" text-anchor="middle" font-size="10">getConstructor()</text>
+      <text x="404" y="87" text-anchor="middle" font-size="10">newInstance()</text>
+
+      <line x1="404" y1="100" x2="404" y2="126" stroke="#8E2A26" stroke-width="1.3" marker-end="url(#d1)"/>
+
+      <rect x="264" y="130" width="280" height="106" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4"/>
+      <text x="404" y="150" text-anchor="middle" font-size="10" fill="#8E2A26">于是插件类被迫满足四个条件</text>
+      <text x="280" y="172" font-size="9.5" fill="#8E2A26">· 必须是 public 的具体类</text>
+      <text x="280" y="190" font-size="9.5" fill="#8E2A26">· 必须有 public 构造器</text>
+      <text x="280" y="208" font-size="9.5" fill="#8E2A26">· 构造器不能抛检查异常</text>
+      <text x="280" y="226" font-size="9.5" fill="#8E2A26">· 构造器必须无参 ← 最致命</text>
+
+      <text x="576" y="150" font-size="9.5" opacity=".8">「无参构造器」的连锁反应：</text>
+      <text x="576" y="170" font-size="9.5" opacity=".75">→ 字段不能 final（第 3、9 章）</text>
+      <text x="576" y="188" font-size="9.5" opacity=".75">→ 无法注入 mock，无法单元测试</text>
+      <text x="576" y="206" font-size="9.5" opacity=".75">→ 拿不到作用域、生命周期、拦截</text>
+      <text x="576" y="224" font-size="9.5" opacity=".75">→ 只能靠静态单例共享服务</text>
+
+      <line x1="16" y1="256" x2="844" y2="256" stroke="currentColor" stroke-width="1" opacity=".25"/>
+      <text x="16" y="274" font-size="9.5" fill="#8E2A26">另外两种失败：右边值拼错 → 运行时才炸；<tspan font-weight="500">左边属性名拼错 → 用默认值静默继续，连集成测试都发现不了</tspan></text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>一行字符串，四条约束，一整套能力的丧失。</b>注意最后那句：拼错右边至少会报错；<b>拼错左边（<code>persistance</code> 少一个 e）什么都不会发生</b>——资源文件允许你写任意多个无关属性，框架只是没读到它期望的那个，于是用了默认值。</figcaption>
+  </figure>
+
+  <p>作者把最后这条单独点了名，因为它最阴险：</p>
+  <div class="box trap">
+    <span class="tag">⚠ 静默失效</span>
+    <p><code>cache.<b>persistance</b>.class=...</code>（<em>persistence</em> 拼错）—— 没有编译检查，没有运行时报错，连集成测试都通不过检查，因为 <code>jokers.friend.is.batman=true</code> 这种属性对资源文件来说也完全合法。</p>
+    <p><em>这直接导致了那个人人都干过的坏习惯：从上个项目或教程里复制粘贴一份"已知能跑"的配置。</em></p>
+  </div>
+
+  <h3><span class="sec">10.3</span>反模式二：黑盒 —— 脆弱基类</h3>
+  <p>注意区分：<strong>封装</strong>是隐藏实现细节（好，第 9 章刚讲过）；<strong>黑盒</strong>是隐藏运作机制，让你既扩展不了也测试不了（坏）。作者挑了最常见的一种：用继承复用代码。</p>
+<pre><code>public class Queue&lt;I&gt; <b>extends ArrayList&lt;I&gt;</b> {
+    private int end = -1;
+
+    public void enqueue(I item) { super.add(0, item); end++; }
+    public I dequeue() {
+        if (end == -1) return null;
+        end--;
+        return super.get(end + 1);
+    }
+}</code></pre>
+  <p>看起来很省事。然后：</p>
+<pre><code>Queue&lt;String&gt; q = new Queue&lt;&gt;();
+q.enqueue("Muse");
+q.enqueue("Pearl Jam");
+<b>q.clear();</b>                  <i>// ← 来自基类的方法，Queue 完全不知情</i>
+q.enqueue("Nirvana");
+q.dequeue();                  <i>// IndexOutOfBoundsException</i></code></pre>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 220" role="img" aria-label="继承让基类的 clear() 绕过子类维护的 end 索引导致状态损坏；改用委托后基类方法不再暴露" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5" fill="#8E2A26">继承</text>
+      <rect x="16" y="34" width="150" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="91" y="56" text-anchor="middle" font-size="10">调用方</text>
+      <line x1="168" y1="44" x2="212" y2="44" stroke="currentColor" stroke-width="1.2" marker-end="url(#d2)"/>
+      <text x="190" y="36" text-anchor="middle" font-size="8.5">enqueue()</text>
+      <line x1="168" y1="60" x2="300" y2="112" stroke="#8E2A26" stroke-width="1.4" marker-end="url(#d2)"/>
+      <text x="200" y="88" font-size="8.5" fill="#8E2A26">clear() ← 直通基类</text>
+
+      <rect x="216" y="26" width="150" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="291" y="48" text-anchor="middle" font-size="10">Queue.end</text>
+      <line x1="291" y1="62" x2="291" y2="102" stroke="currentColor" stroke-width="1.1" marker-end="url(#d2)"/>
+
+      <rect x="216" y="106" width="150" height="34" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4"/>
+      <text x="291" y="128" text-anchor="middle" font-size="10" fill="#8E2A26">ArrayList 的数据</text>
+
+      <text x="392" y="70" font-size="9.5" fill="#8E2A26">clear() 清空了数据，</text>
+      <text x="392" y="88" font-size="9.5" fill="#8E2A26">但 end 还指向 2</text>
+      <text x="392" y="106" font-size="9.5" fill="#8E2A26">→ 状态损坏</text>
+      <text x="392" y="130" font-size="9.5" opacity=".7">覆盖 clear() 能补上，</text>
+      <text x="392" y="148" font-size="9.5" opacity=".7">那 get(int)、remove()、</text>
+      <text x="392" y="166" font-size="9.5" opacity=".7">subList() 呢？全覆盖=白继承</text>
+
+      <line x1="16" y1="186" x2="784" y2="186" stroke="currentColor" stroke-width="1" opacity=".25"/>
+      <text x="16" y="208" font-size="10" fill="#0C6660">委托：<tspan fill="currentColor" opacity=".8">private final ArrayList&lt;I&gt; list;</tspan> —— 基类方法根本不出现在 Queue 的 API 上，问题从源头消失</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>继承把基类的全部 API 强行并入了你的契约。</b>你只想要"一个能存东西的地方"，却顺带承诺了 <code>clear()</code>、<code>get(int)</code>、<code>subList()</code>… 而这些方法都不知道 <code>end</code> 的存在。修法只有一个：<b>用组合代替继承</b>。</figcaption>
+  </figure>
+
+  <p>作者补了一刀：<strong>抽象基类无法用 mock 替换。</strong>他点名 Apache CXF 有四五层继承的类，"隔离问题非常困难"。同一句批评今天适用于任何要求你 <code>extends SomeFrameworkBase</code> 的框架。</p>
+
+  <h3><span class="sec">10.4</span>正解：程序化配置</h3>
+  <p>解药出奇地简单：<strong>把插件当作框架的一个依赖来对待</strong>，让使用者自己负责创建它。作者用 JSR-303（Bean Validation）作为范例。</p>
+  <p>第一步，用<strong>元注解</strong>代替字符串来指定插件类：</p>
+<pre><code>@Target(ElementType.FIELD)
+@Retention(RetentionPolicy.RUNTIME)
+<b>@ConstraintValidator(LengthConstraint.class)</b>     <i>// 类型安全！拼错 = 编译错误</i>
+public @interface Length {
+    int min();
+    int max();
+}</code></pre>
+  <p>这一步同时解决了三个问题：拼错类名（编译错误）、拼错属性名（编译错误）、插错类型（<code>@ConstraintValidator</code> 只接受 <code>Constraint</code> 的子类型）。</p>
+  <p>第二步，也是关键的一步——<strong>把"怎么创建插件"这件事交出去</strong>：</p>
+<pre><code>public interface ConstraintFactory {
+    &lt;T extends Constraint&gt; T getInstance(Class&lt;T&gt; constraintClass);
+}</code></pre>
+<pre><code>public class GuiceConstraintFactory implements ConstraintFactory {
+    private final Injector injector = Guice.createInjector(new MyModule());
+
+    public &lt;T extends Constraint&gt; T getInstance(Class&lt;T&gt; key) {
+        return <b>injector.getInstance(key)</b>;      <i>// 用我自己的注入器造</i>
+    }
+}</code></pre>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 840 240" role="img" aria-label="刚性配置由框架用反射直接创建插件，程序化配置由框架委托给用户提供的工厂，插件因此能享受依赖注入的全部能力" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="d3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    <marker id="d3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0C6660"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5" fill="#8E2A26">刚性配置</text>
+      <rect x="16" y="34" width="112" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="72" y="59" text-anchor="middle" font-size="10">框架</text>
+      <line x1="130" y1="54" x2="176" y2="54" stroke="#8E2A26" stroke-width="1.3" marker-end="url(#d3)"/>
+      <text x="153" y="46" text-anchor="middle" font-size="8.5" fill="#8E2A26">反射 new</text>
+      <rect x="180" y="34" width="130" height="40" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4"/>
+      <text x="245" y="52" text-anchor="middle" font-size="10" fill="#8E2A26">你的插件</text>
+      <text x="245" y="66" text-anchor="middle" font-size="8.5" fill="#8E2A26">无参构造器，无依赖</text>
+      <text x="330" y="48" font-size="9.5" fill="#8E2A26">要用服务？只能</text>
+      <text x="330" y="66" font-size="9.5" fill="#8E2A26">走静态单例</text>
+
+      <line x1="16" y1="100" x2="824" y2="100" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="16" y="124" font-size="10.5" fill="#0C6660">程序化配置</text>
+      <rect x="16" y="140" width="112" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="72" y="165" text-anchor="middle" font-size="10">框架</text>
+      <line x1="130" y1="160" x2="176" y2="160" stroke="#0C6660" stroke-width="1.3" marker-end="url(#d3g)"/>
+      <text x="153" y="152" text-anchor="middle" font-size="8.5" fill="#0C6660">委托</text>
+      <rect x="180" y="140" width="150" height="40" rx="3" fill="none" stroke="#0C6660" stroke-width="1.5"/>
+      <text x="255" y="158" text-anchor="middle" font-size="10" fill="#0C6660">你提供的工厂</text>
+      <text x="255" y="172" text-anchor="middle" font-size="8.5" fill="#0C6660">ConstraintFactory</text>
+      <line x1="332" y1="160" x2="378" y2="160" stroke="#0C6660" stroke-width="1.3" marker-end="url(#d3g)"/>
+      <rect x="382" y="140" width="130" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="447" y="165" text-anchor="middle" font-size="10">你的注入器</text>
+      <line x1="514" y1="160" x2="560" y2="160" stroke="currentColor" stroke-width="1.2" marker-end="url(#d3)"/>
+      <rect x="564" y="140" width="150" height="40" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="639" y="158" text-anchor="middle" font-size="10" fill="#0C6660">你的插件</text>
+      <text x="639" y="172" text-anchor="middle" font-size="8.5" fill="#0C6660">构造器注入 + final</text>
+
+      <text x="180" y="212" font-size="9.5" fill="#0C6660">插件因此拿回：可测试性 · 作用域 · 生命周期 · 拦截 · 事务 —— 全套</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>整章的解药就是这一步委托。</b>框架不再自己 <code>new</code>，而是问"你要我用什么来造"。多出来的只是一个单方法接口，换回来的是插件与应用其余部分完全一致的能力。</figcaption>
+  </figure>
+
+  <p>于是插件可以正常地享受依赖注入：</p>
+<pre><code>public class LengthConstraint implements Constraint&lt;Length&gt; {
+    private int min, max;
+    private final <b>StringTools tools;</b>              <i>// 注入的共享工具</i>
+
+    <b>@Inject</b> public LengthConstraint(StringTools tools) { this.tools = tools; }
+
+    public void initialize(Length constraint) {     <i>// 从注解读配置</i>
+        min = constraint.min();  max = constraint.max();
+    }
+    public boolean isValid(Object value) {
+        if (value == null) return true;
+        return tools.isLengthBetween(min, max, (String) value);
+    }
+}</code></pre>
+
+  <div class="box note">
+    <span class="tag">写给框架作者的一句话</span>
+    <p>作者反复强调的判据只有一条：<strong>可测试性</strong>。它自然推导出松耦合、作用域、模块化设计。而框架最常犯的错，是"自己测得很严格，却完全没考虑<em>使用者的代码</em>好不好测"。</p>
+  </div>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 作者赌对了：JSR-303 的机制活到了今天</h4>
+    <p>Bean Validation 早已进化到 <strong>Jakarta Validation 3.x</strong>（<code>jakarta.validation</code>），而那个关键接口原封不动地留了下来（改名 <code>ConstraintValidatorFactory</code>）。更妙的是：<strong>Spring 内置了它的实现</strong>，你什么都不用做——</p>
+<pre><code>public class OrderNumberValidator implements ConstraintValidator&lt;OrderNumber, String&gt; {
+    private final OrderRepository repo;                <i>// 直接注入 Spring bean</i>
+    OrderNumberValidator(OrderRepository repo) { this.repo = repo; }   <i>// 构造器注入！</i>
+
+    public boolean isValid(String v, ConstraintValidatorContext ctx) {
+        return repo.existsByNumber(v);
+    }
+}</code></pre>
+    <p>幕后是 <code>SpringConstraintValidatorFactory</code>——就是作者手写的 <code>GuiceConstraintFactory</code> 的官方版本。<em>这是全书预测最准的一节。</em></p>
+
+    <h4>② 刚性配置：最大的一次修复</h4>
+    <p>10.2 节那两个失败（拼错值 / 拼错属性名），Spring Boot 用 <code>@ConfigurationProperties</code> 系统性解决了：</p>
+<pre><code>@ConfigurationProperties(prefix = "cache")
+@Validated
+public record CacheProperties(
+        @Min(1) int capacity,                       <i>// 值有类型，还能校验</i>
+        boolean memory,
+        Class&lt;? extends PersistenceListener&gt; persistenceClass   <i>// 类型受约束</i>
+) {}</code></pre>
+    <div class="tw compact"><table>
+      <thead><tr><th>原书的失败</th><th>今天怎么防住</th></tr></thead>
+      <tbody>
+        <tr><td>值拼错，运行时才炸</td><td>绑定期类型转换失败 → <strong>启动失败</strong>，报明确错误</td></tr>
+        <tr><td>属性名拼错，静默用默认值</td><td>IDE 从 <code>spring-configuration-metadata.json</code> 读取元数据，<strong>直接标红并自动补全</strong>；<code>ignoreUnknownFields=false</code> 可让启动直接失败</td></tr>
+        <tr><td>插件类型不受约束</td><td>泛型上界 + <code>@Validated</code> 校验</td></tr>
+        <tr><td>只能是 <code>String</code></td><td><code>Duration</code>、<code>DataSize</code>、枚举、嵌套 record、<code>List&lt;T&gt;</code> 全都支持</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>③ "程序化配置"成了行业默认</h4>
+    <p>今天几乎每个主流框架都提供 <em>customizer / configurer</em> 风格的扩展点——那正是作者要的东西：</p>
+    <div class="tw compact"><table>
+      <thead><tr><th>场景</th><th>扩展点</th></tr></thead>
+      <tbody>
+        <tr><td>Spring MVC</td><td><code>WebMvcConfigurer</code>（实现它的类是普通 bean，可注入任何依赖）</td></tr>
+        <tr><td>Jackson</td><td><code>Jackson2ObjectMapperBuilderCustomizer</code></td></tr>
+        <tr><td>Spring Security</td><td><code>SecurityFilterChain</code> bean + Lambda DSL</td></tr>
+        <tr><td>OpenAPI / 指标 / 数据源…</td><td>无一例外都是 <code>XxxCustomizer</code></td></tr>
+        <tr><td>JDK 层面</td><td><code>ServiceLoader</code> SPI —— 仍是"无参构造器"模式，<strong>这是它今天最大的短板</strong></td></tr>
+      </tbody>
+    </table></div>
+    <p>Spring Boot 的整套自动配置（<code>@ConditionalOnMissingBean</code> + <code>AutoConfiguration.imports</code>，2.7 起取代了老的 <code>spring.factories</code>）就是这一思想的极致：<strong>框架提供默认值，你随时可以用一个自己的 bean 覆盖它，不需要碰任何配置文件。</strong></p>
+
+    <h4>④ 脆弱基类：语言和规范都站在作者这边了</h4>
+    <ul>
+      <li><em>Effective Java</em> 第 18 条："<strong>组合优于继承</strong>"已是共识；</li>
+      <li><code>sealed</code> 类（Java 17）让基类作者可以显式声明"只允许这几个子类"，从而安全地维护不变式；</li>
+      <li><code>record</code> 隐式 final —— 数据类型不能被继承污染；</li>
+      <li>Spring 早已把强制继承（<code>WebSecurityConfigurerAdapter</code>、<code>HibernateDaoSupport</code>）逐步删掉，全面转向"实现接口 / 声明 bean"；</li>
+      <li>那个 <code>Queue extends ArrayList</code> 的例子在今天有更好的答案：<code>ArrayDeque</code>。<strong>需要一个队列时，先找现成的，而不是继承一个列表。</strong></li>
+    </ul>
+
+    <h4>⑤ <code>web.xml</code> 与 servlet 的四条限制：全部解除</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>2009 年的限制</th><th>今天</th></tr></thead>
+      <tbody>
+        <tr><td>必须 public 无参构造器</td><td>Spring MVC 的 <code>@Controller</code> 是普通 bean，<strong>构造器注入、<code>final</code> 字段全都可以</strong></td></tr>
+        <tr><td>只能是单例</td><td><code>@RequestScope</code> 等作用域随便用</td></tr>
+        <tr><td>方法无法拦截</td><td>控制器方法可以被 <code>@Transactional</code>、<code>@PreAuthorize</code>、<code>@Observed</code> 拦截</td></tr>
+        <tr><td><code>web.xml</code></td><td>Servlet 3.0 的 <code>@WebServlet</code>，或直接被 Spring Boot 的嵌入式容器取代</td></tr>
+      </tbody>
+    </table></div>
+    <p>作者那张"各家 Web 框架各造一套 DI"的表格，结局是<strong>整个问题被生态收敛消解了</strong>：Struts2、Tapestry、Wicket 大都边缘化，Spring MVC/WebFlux 成为事实标准，而 JSR-330（<code>jakarta.inject</code>）给了所有容器一套公共注解。<em>碎片化没有被"某个更好的插件协议"解决，而是被市场收敛解决了。</em></p>
+
+    <h4>⑥ 一个作者没预见到的新答案：把校验搬到编译期</h4>
+    <p>Micronaut 和 Quarkus 更进一步——它们在<strong>构建期</strong>就验证所有注入点、拦截器绑定和配置属性。第 10 章讲的一切"运行时才发现的配置错误"，在这两个框架里都变成了编译错误。作者当年那句"一个会额外花力气阻止你砸自己脚的库更可取"（第 2 章），被它们做到了极致。</p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c9/</code> 里的 <code>Queue.java</code>（脆弱基类）、<code>MyPersistenceListener.java</code>（OSCache 插件）、<code>JSR.java</code>（JSR-303 示例）、<code>web.xml</code>；<code>prasanna/src/c1/SpringToCheck.java</code>。</p>
+  </div>
+
+  <div class="pager"><a href="ch09.html"><span>上一章</span>09 · 并发、可见性与设计</a><a class="next" href="ch11.html"><span>下一章</span>11 · 实战：Crosstalk</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

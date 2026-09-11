@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拦截、代理与 AOP · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a class="on" aria-current="page" href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch8">
+  <p class="eyebrow">第 8 章</p>
+  <h2 class="title">拦截、代理与 AOP</h2>
+  <p class="lede">第 7 章讲的是把事件<strong>往下</strong>通知给对象；这一章相反——<strong>改变对象对调用者的反应</strong>。事务、安全、日志这类散落在几百个方法里的重复代码，可以收进一处，用匹配器批量织入。代价是：你从此活在动态代理的规则之下，而这些规则有五条硬边界。</p>
+  <ul class="chips">
+    <li>织入 weaving</li>
+    <li>切点 / 匹配器</li>
+    <li>JDK Proxy · CGLib</li>
+    <li>拦截顺序</li>
+    <li>声明式事务</li>
+    <li>方法级安全</li>
+    <li>代理的五条边界</li>
+  </ul>
+
+  <h3><span class="sec">8.1</span>问题：横切关注点</h3>
+  <div class="split">
+    <div class="bad"><h5>手写事务</h5>
+<pre><code>public class Brokerage {
+    private final TransactionManager txn;
+
+    public void placeOrder(Order order) {
+        txn.beginTransaction();
+        try {
+            ...
+        } catch (DataException e) {
+            txn.rollback();
+        } finally {
+            if (!txn.rolledBack()) txn.commit();
+        }
+    }
+}</code></pre>
+    </div>
+    <div class="good"><h5>声明式</h5>
+<pre><code>public class Brokerage {
+
+    <b>@Transactional</b>
+    public void placeOrder(Order order) {
+        ...
+    }
+}
+<i>// 少了：try/catch/finally、
+//       对 TransactionManager 的依赖、
+//       每个业务方法的重复副本</i></code></pre>
+    </div>
+  </div>
+  <p>右边发生的事情叫<em>织入（weaving）</em>，被插入的行为叫<em>通知（advice）</em>。织入有三个时机：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 840 240" role="img" aria-label="三种织入时机：编译期由特殊编译器织入、加载期改写字节码、运行时用动态代理包装" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <line x1="90" y1="40" x2="800" y2="40" stroke="currentColor" stroke-width="1" opacity=".3"/>
+      <text x="90" y="30" font-size="9" opacity=".55">源码</text>
+      <text x="330" y="30" font-size="9" opacity=".55">.class</text>
+      <text x="560" y="30" font-size="9" opacity=".55">加载进 JVM</text>
+      <text x="790" y="30" font-size="9" opacity=".55" text-anchor="end">运行</text>
+      <circle cx="90" cy="40" r="3.5" fill="currentColor"/><circle cx="330" cy="40" r="3.5" fill="currentColor"/>
+      <circle cx="560" cy="40" r="3.5" fill="currentColor"/><circle cx="790" cy="40" r="3.5" fill="currentColor"/>
+
+      <line x1="200" y1="48" x2="200" y2="74" stroke="currentColor" stroke-width="1.1" marker-end="url(#c1)"/>
+      <rect x="106" y="78" width="188" height="60" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="200" y="98" text-anchor="middle" font-size="10.5">① 编译期织入</text>
+      <text x="200" y="114" text-anchor="middle" font-size="9" opacity=".7">AspectJ ajc / 注解处理器</text>
+      <text x="200" y="129" text-anchor="middle" font-size="9" fill="#0C6660">无运行时限制</text>
+
+      <line x1="445" y1="48" x2="445" y2="74" stroke="currentColor" stroke-width="1.1" marker-end="url(#c1)"/>
+      <rect x="351" y="78" width="188" height="60" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="445" y="98" text-anchor="middle" font-size="10.5">② 加载期织入</text>
+      <text x="445" y="114" text-anchor="middle" font-size="9" opacity=".7">改写字节码 / Java Agent</text>
+      <text x="445" y="129" text-anchor="middle" font-size="9" opacity=".7">要配 JVM 参数</text>
+
+      <line x1="675" y1="48" x2="675" y2="74" stroke="#A94A16" stroke-width="1.3" marker-end="url(#c1)"/>
+      <rect x="581" y="78" width="188" height="60" rx="3" fill="none" stroke="#A94A16" stroke-width="1.5"/>
+      <text x="675" y="98" text-anchor="middle" font-size="10.5" fill="#A94A16">③ 运行时动态代理</text>
+      <text x="675" y="114" text-anchor="middle" font-size="9" fill="#A94A16" opacity=".85">Spring AOP / Guice AOP</text>
+      <text x="675" y="129" text-anchor="middle" font-size="9" fill="#8E2A26">受 8.3 节五条限制</text>
+
+      <text x="420" y="176" text-anchor="middle" font-size="10" opacity=".7">DI 容器天然落在 ③ —— 因为对象本来就由它创建，插一层代理是顺手的事</text>
+      <text x="420" y="200" text-anchor="middle" font-size="10" fill="#0C6660">2026 年的新变化：Micronaut / Quarkus / Dagger 把 DI 和 AOP 一起搬回了 ①</text>
+      <text x="420" y="220" text-anchor="middle" font-size="9.5" opacity=".65">于是 8.3 节那五条限制在它们身上大部分不存在</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>时机决定能力边界。</b>越早织入，能改的东西越多（字段、静态方法、final 都能动），但需要额外的构建/启动配置；越晚织入，越透明，但只能改"能被子类覆盖的东西"。</figcaption>
+  </figure>
+
+  <h4>Guice 的拦截器</h4>
+<pre><code>public class TracingInterceptor implements MethodInterceptor {   <i>// AopAlliance 接口</i>
+    public Object invoke(MethodInvocation mi) throws Throwable {
+        System.out.println("enter " + mi.getMethod().getName());
+        try {
+            return <b>mi.proceed()</b>;               <i>// 放行到真实方法</i>
+        } finally {
+            System.out.println("exit " + mi.getMethod().getName());
+        }
+    }
+}</code></pre>
+<pre><code>bindInterceptor(<b>any()</b>, <b>any()</b>, new TracingInterceptor());
+<i>//              ↑类匹配器  ↑方法匹配器</i></code></pre>
+  <p>注意 <code>finally</code>：异常也要保证出口日志被打印。这是拦截器的基本纪律。</p>
+
+  <h4>Spring 的切面</h4>
+<pre><code>&lt;aop:config&gt;
+    &lt;aop:aspect ref="tracer"&gt;
+        &lt;aop:pointcut id="pointcuts.anyMethod"
+                      expression="<b>execution(* example.*.*(..))</b>" /&gt;
+        &lt;aop:around pointcut-ref="pointcuts.anyMethod" method="trace"/&gt;
+    &lt;/aop:aspect&gt;
+&lt;/aop:config&gt;</code></pre>
+  <p>AspectJ 的<em>切点表达式</em>是一门专门的匹配语言，比 Guice 的 <code>Matcher</code> 表达力强得多，代价是它是字符串（回到第 2 章的字符串键问题：拼错了运行时才知道）。</p>
+
+  <h4>代理到底是什么</h4>
+  <p>理解代理最好的方式，是想象你<strong>手写</strong>了这个子类：</p>
+<pre><code>public class ChefProxy <b>extends Chef</b> {              <i>// 就是个子类</i>
+    private final MethodInterceptor interceptor;
+    private final Chef chef;
+
+    public void cook()  { interceptor.invoke(new MethodInvocation() { ... }); }
+    public void clean() { interceptor.invoke(new MethodInvocation() { ... }); }
+    <i>// 每个方法都不干活，只是转交给拦截器；由拦截器决定要不要 proceed()</i>
+}</code></pre>
+  <p>代理库做的事就是<strong>在运行时生成这段字节码</strong>。两种工具：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th></th><th>JDK <code>java.lang.reflect.Proxy</code></th><th>CGLib</th></tr></thead>
+    <tbody>
+      <tr><td>能代理什么</td><td><strong>只能是接口</strong></td><td>具体类（生成子类）</td></tr>
+      <tr><td>需要</td><td>ClassLoader + 接口数组 + <code>InvocationHandler</code></td><td>目标类 + <code>MethodInterceptor</code></td></tr>
+      <tr><td>放行</td><td><code>method.invoke(target, args)</code></td><td><code>methodProxy.invokeSuper(proxy, args)</code></td></tr>
+      <tr><td>作者的建议</td><td colspan="2"><strong>能用接口代理就用接口代理</strong>，除非你确信需要类代理并理解其后果</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>过多的通知很危险</h4>
+  <p>作者用一个极简的例子说明顺序问题。模板输出 <code>Hello, Bob!</code>，两个拦截器分别加粗和包 HTML：</p>
+  <div class="split">
+    <div class="bad"><h5>顺序错了</h5>
+<pre><code>bindInterceptor(..., new BoldDecoratingInterceptor());
+bindInterceptor(..., new HtmlDecoratingInterceptor());
+
+<i>// 输出：</i>
+&lt;b&gt;&lt;html&gt;&lt;body&gt;Hello, Bob!&lt;/body&gt;&lt;/html&gt;&lt;/b&gt;</code></pre>
+    </div>
+    <div class="good"><h5>顺序对了</h5>
+<pre><code>bindInterceptor(..., new HtmlDecoratingInterceptor());
+bindInterceptor(..., new BoldDecoratingInterceptor());
+
+<i>// 输出：</i>
+&lt;html&gt;&lt;body&gt;&lt;b&gt;Hello, Bob!&lt;/b&gt;&lt;/body&gt;&lt;/html&gt;</code></pre>
+    </div>
+  </div>
+  <div class="box trap">
+    <span class="tag">⚠ 单元测试抓不到这个</span>
+    <p>两个拦截器各自的单元测试都会通过，被拦截类的单元测试也会通过（测试时根本没有拦截器）。<strong>这个 bug 只存在于"组合"里。</strong>——和第 6 章 scope-widening 是同一类问题。</p>
+    <p>作者给的防线是 8.3 节末尾的<strong>纵向集成测试</strong>：把预期的拦截器组合装起来，走一遍真实调用路径。</p>
+  </div>
+
+  <h3><span class="sec">8.2</span>两个真实用例</h3>
+
+  <h4>声明式事务</h4>
+  <p>没有拦截时，每个方法都要写这一坨：</p>
+<pre><code>public void newCar(Car car) {
+    EntityTransaction txn = em.getTransaction();
+    txn.begin();
+    boolean succeed = true;
+    try { em.persist(car); }
+    catch (RuntimeException e) { txn.rollback(); succeed = false; }
+    finally { if (succeed) txn.commit(); }
+}</code></pre>
+  <p>加上 <code>@Transactional</code> 后剩下：</p>
+<pre><code>@Transactional
+public void newCar(Car car) { em.persist(car); }</code></pre>
+  <p>作者特意点出一个容易被忽略的收益：<strong>上面那段手写代码把异常吞掉了</strong>（<code>catch</code> 之后什么都没做）。声明式事务除了省样板，还把"什么异常该回滚"变成了框架统一的、正确的语义。</p>
+
+  <h4>方法级安全</h4>
+<pre><code>&lt;security:global-method-security&gt;
+    &lt;security:protect-pointcut
+        expression="execution(* example.PhoneService.*(..))"
+        access="ROLE_ADMIN" /&gt;
+&lt;/security:global-method-security&gt;</code></pre>
+  <p>拦截器在方法执行前校验当前用户的角色，不够就抛异常——<strong>目标方法根本不会执行</strong>。这是拦截器相对于"在方法开头写一行检查"的关键优势：它能<em>阻止</em>调用，而且这个策略是集中声明的。</p>
+
+  <h3><span class="sec">8.3</span>代理的五条边界</h3>
+  <p>本章最有价值的一节。<strong>记住一句话就够了：代理只是一个子类。</strong>凡是子类不能覆盖的东西，代理都拦不到。</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 290" role="img" aria-label="类的各种成员中，只有 public/protected/包级可见的非 final 实例方法能被运行时代理拦截" xmlns="http://www.w3.org/2000/svg">
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <rect x="16" y="30" width="330" height="240" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="30" y="50" font-size="10" opacity=".6">class FrenchChef</text>
+
+      <rect x="34" y="62" width="294" height="34" rx="2" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="46" y="84" font-size="10" fill="#0C6660">public void cook()</text>
+      <text x="316" y="84" font-size="10" fill="#0C6660" text-anchor="end">✓ 可拦截</text>
+
+      <rect x="34" y="102" width="294" height="34" rx="2" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="46" y="124" font-size="10" fill="#0C6660">protected void clean()</text>
+      <text x="316" y="124" font-size="10" fill="#0C6660" text-anchor="end">✓ 可拦截</text>
+
+      <rect x="34" y="142" width="294" height="34" rx="2" fill="none" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="46" y="164" font-size="10" fill="#8E2A26">private void clean()</text>
+      <text x="316" y="164" font-size="10" fill="#8E2A26" text-anchor="end">✗ 子类看不见</text>
+
+      <rect x="34" y="182" width="294" height="34" rx="2" fill="none" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="46" y="204" font-size="10" fill="#8E2A26">public final void cook()</text>
+      <text x="316" y="204" font-size="10" fill="#8E2A26" text-anchor="end">✗ 不能覆盖</text>
+
+      <rect x="34" y="222" width="294" height="34" rx="2" fill="none" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="46" y="244" font-size="10" fill="#8E2A26">static void babble()</text>
+      <text x="316" y="244" font-size="10" fill="#8E2A26" text-anchor="end">✗ 不绑定实例</text>
+
+      <text x="380" y="50" font-size="10.5" fill="#8E2A26">另外两类也拦不到</text>
+      <rect x="380" y="62" width="330" height="54" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="394" y="82" font-size="10" fill="#8E2A26">字段读写</text>
+      <text x="394" y="100" font-size="9" opacity=".7">int count++; String s = "x";  ← 完全不可见</text>
+
+      <rect x="380" y="126" width="330" height="54" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="394" y="146" font-size="10" fill="#8E2A26">final class（整个类）</text>
+      <text x="394" y="164" font-size="9" opacity=".7">连子类都生成不了 → 用 Delegator 包一层</text>
+
+      <rect x="380" y="196" width="330" height="74" rx="3" fill="none" stroke="#A94A16" stroke-width="1.3"/>
+      <text x="394" y="216" font-size="10" fill="#A94A16">还有一条书里没写的（现代 Spring 最常见）</text>
+      <text x="394" y="234" font-size="9.5" fill="#A94A16">自调用：this.otherMethod() 绕过了代理</text>
+      <text x="394" y="252" font-size="9" opacity=".7">因为 this 是真实对象，不是代理 → @Transactional 静默失效</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>一张图记住能拦什么。</b>左栏是"子类能不能覆盖"这一条规则的四个推论；右栏是两个额外死角加上一个书里没提、但今天最常踩的坑。</figcaption>
+  </figure>
+
+  <h4>边界 1：相同性判断不可靠</h4>
+<pre><code>final Painting picasso = new Painting("Picasso");
+Injector injector = Guice.createInjector(... bind(Painting.class).toInstance(picasso) ...);
+
+assert picasso <b>==</b> injector.getInstance(Painting.class);   <i>// 失败！拿到的是代理</i></code></pre>
+  <p>两个常见的连带错误：</p>
+  <div class="split">
+    <div class="bad"><h5>会拿到代理的类名</h5>
+<pre><code>public class ANoisyService {
+    public final Logger log =
+        Logger.getLogger(<b>getClass()</b>.getName());
+    <i>// 可能打印成 ANoisyService$$EnhancerByCGLIB$$…</i>
+}</code></pre>
+    </div>
+    <div class="good"><h5>显式写死类字面量</h5>
+<pre><code>public class ANoisyService {
+    public final Logger log =
+        Logger.getLogger(<b>ANoisyService.class</b>.getName());
+}</code></pre>
+    </div>
+  </div>
+  <div class="split">
+    <div class="bad"><h5>把代理排除在相等之外</h5>
+<pre><code>public boolean equals(Object o) {
+    if (o == null ||
+        o.<b>getClass() != EqualToNone.class</b>) return false;
+    ...
+}</code></pre>
+    </div>
+    <div class="good"><h5>用 instanceof</h5>
+<pre><code>public boolean equals(Object o) {
+    if (!(o <b>instanceof</b> EqualToNone)) return false;
+    ...
+}</code></pre>
+    </div>
+  </div>
+
+  <h4>边界 2：静态方法</h4>
+  <p>Java 的静态方法不能被覆盖，只能被<em>隐藏</em>。作者做了一个很好的实验：子类定义同名 static 方法，从子类里调用会用子类版本，看起来像"覆盖"——但那只是词法作用域的效果。从外部调用必须显式指明是哪一个。<strong>结论：需要动态行为的逻辑，不要放在静态方法里。</strong></p>
+
+  <h4>边界 3：私有方法</h4>
+  <p>把 <code>clean()</code> 改成 <code>private</code>，拦截器就完全看不到它了。解法是<strong>提升可见性</strong>：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th>可见性</th><th>能被代理？</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>private</code></td><td>✗</td><td>子类不可见</td></tr>
+      <tr><td>包级（无修饰符）</td><td>✓</td><td><strong>推荐</strong>：包外完全不可见，但代理通常生成在同包下</td></tr>
+      <tr><td><code>protected</code></td><td>✓</td><td>对同层级以外隐藏，但其他模块的子类仍能看到</td></tr>
+      <tr><td><code>public</code></td><td>✓</td><td>全开放</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>边界 4：final 方法与 final 类</h4>
+  <p><code>final</code> 不是可见性修饰符，但它同样阻止覆盖。类是 <code>final</code> 时连子类都生成不了。解法是委托：</p>
+<pre><code>class FrenchChefDelegator implements Chef {
+    private final FrenchChef delegate;                <i>// 组合而非继承</i>
+    public void cook()  { delegate.cook(); }
+    public void clean() { delegate.clean(); }
+}</code></pre>
+  <p>作者的建议：<strong>拿不准就用组合，别用继承；更好的做法是直接代理接口。</strong></p>
+
+  <h4>边界 5：字段</h4>
+  <p>AspectJ 的构建期织入能改字段，Spring AOP 和 Guice AOP 都不能。而且——</p>
+<pre><code>public class FrenchChef implements Chef {
+    private final RecipeBook recipes = <b>new RecipeBook()</b>;   <i>// 手工构造</i>
+    public void cook() { recipes.read("ratatouille"); }
+}</code></pre>
+  <p><strong>拦截器永远够不到 <code>RecipeBook</code> 的方法</strong>，因为它不是容器创建的。这句话反过来说更重要：<em>任何你希望被拦截的依赖，都必须由注入器创建。</em>手工 <code>new</code> 出来的对象自动退出 AOP 体系——这是第 1 章"别自己 new"的又一条理由。</p>
+
+  <h4>拦截与测试</h4>
+  <p>拦截让"单元行为"和"语义行为"分了家：<code>TicketBooth.purchase()</code> 的单元测试只知道它卖票；加了一个"每 100 位顾客打折"的拦截器后，系统的实际语义变了。作者的解法是<strong>纵向集成测试</strong>：</p>
+<pre><code>@Test public void discountEveryHundredthTicket() {
+    Injector injector = Guice.createInjector(new AbstractModule() {
+        protected void configure() {
+            bind(TicketBooth.class);
+            <b>bindInterceptor(any(), any(), new DiscountingInterceptor());</b>   <i>// 装上真实拦截器</i>
+        }
+    });
+    TicketBooth booth = injector.getInstance(TicketBooth.class);
+    for (int i = 1; i &lt; 101; i++) {
+        Ticket t = booth.purchase(Money.inDollars("200"));   <i>// 走真实调用路径</i>
+        if (i == 100) assert t instanceof DiscountedTicket;
+    }
+}</code></pre>
+  <p>"当程序里有依赖这类副作用的服务时，<strong>纵向集成测试提供的信心远大于各个单元测试之和</strong>。"</p>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 五条边界：全部成立，而且多了一条最常见的</h4>
+    <p><strong>自调用（self-invocation）</strong>——书里完全没提，但它是今天 Spring 用户踩得最多的坑：</p>
+<pre><code>@Service
+public class OrderService {
+    public void placeOrders(List&lt;Order&gt; orders) {
+        for (Order o : orders) <b>this.save(o);</b>      <i>// ← this 是真实对象，不是代理！</i>
+    }
+
+    @Transactional
+    public void save(Order o) { ... }               <i>// 事务静默失效，一行报错都没有</i>
+}</code></pre>
+    <p>原因完全在书的框架内：调用链是 <code>代理.placeOrders() → 真实对象.placeOrders() → 真实对象.save()</code>，第二跳之后代理就不在链上了。三种解法：把 <code>save</code> 挪到另一个 bean（<strong>首选</strong>，通常也说明职责该分开）；自注入 <code>ObjectProvider&lt;OrderService&gt;</code>；或改用 AspectJ 编译期织入。</p>
+
+    <h4>② 代理技术栈换代</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>2009</th><th>2026</th></tr></thead>
+      <tbody>
+        <tr><td>独立的 <code>cglib.jar</code></td><td>Spring 内嵌了重打包的 CGLIB（<code>org.springframework.cglib</code>），你不用自己引</td></tr>
+        <tr><td>AopAlliance 独立 jar</td><td>同样被重打包进 <code>spring-aop</code>；Guice 仍用它</td></tr>
+        <tr><td>CGLIB 生成子类</td><td><strong>ByteBuddy</strong> 成了生态主流（Mockito、Hibernate 都用它）</td></tr>
+        <tr><td>—</td><td>Spring Boot 2.0 起 <code>proxyTargetClass=true</code> 是<strong>默认值</strong> → 默认走 CGLIB 类代理，而不是 JDK 接口代理</td></tr>
+        <tr><td>—</td><td>Java 17+ 的强封装让"深度反射"受限，跨模块代理需要 <code>--add-opens</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>注意最后两条的组合效果：<strong>默认走类代理，意味着"边界 3/4"（private、final）比 2009 年更容易被撞上</strong>。</p>
+
+    <h4>③ 语言演化制造的新摩擦</h4>
+    <ul>
+      <li><strong>Kotlin 的类和方法默认是 <code>final</code></strong> → 直接触发边界 4。解法是 <code>kotlin-spring</code> 编译器插件（allopen），它自动给 Spring 注解标注的类"解 final"。</li>
+      <li><strong><code>record</code> 是隐式 final 的</strong> → 无法被类代理。这其实是好事：record 是数据，本来就不该被 AOP 拦截（呼应第 9 章"数据对象 vs 服务对象"）。</li>
+      <li><strong>虚拟线程</strong>：拦截器里如果持有锁或用 <code>ThreadLocal</code>，在虚拟线程下的成本模型和 2009 年不同了。</li>
+    </ul>
+
+    <h4>④ 最大的变化：编译期 AOP 回来了，而且这次是主流</h4>
+    <p>看图上那句话——<strong>Micronaut / Quarkus / Dagger 把 DI 和 AOP 一起搬回了编译期</strong>。它们在 <code>javac</code> 的注解处理阶段直接生成拦截代码，于是：</p>
+    <div class="tw compact"><table>
+      <thead><tr><th></th><th>运行时代理（Spring AOP / Guice）</th><th>编译期（Micronaut / Quarkus）</th></tr></thead>
+      <tbody>
+        <tr><td>反射</td><td>大量</td><td>基本没有</td></tr>
+        <tr><td>启动</td><td>秒级</td><td>毫秒级</td></tr>
+        <tr><td>原生镜像</td><td>需要大量 AOT 配置</td><td>天然支持</td></tr>
+        <tr><td>自调用问题</td><td>有</td><td><strong>没有</strong></td></tr>
+        <tr><td>final 方法</td><td>拦不到</td><td>看实现，限制小得多</td></tr>
+        <tr><td>代价</td><td>—</td><td>构建变慢；调试时看到生成代码；动态性受限</td></tr>
+      </tbody>
+    </table></div>
+    <p><em>Spring 的应对不是改架构，而是加 AOT：Spring Boot 3+ 的 <code>spring-boot-maven-plugin process-aot</code> 在构建期预生成代理和 bean 定义，为 GraalVM 原生镜像铺路。</em></p>
+
+    <h4>⑤ 具体框架的现状</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>书中</th><th>今天</th></tr></thead>
+      <tbody>
+        <tr><td><strong>warp-persist</strong></td><td><strong>已停更</strong>。作者自己写的库。继任者是官方的 <code>guice-persist</code>（<code>@Transactional</code> 语义类似，Guice 7 用 <code>jakarta.persistence</code>）</td></tr>
+        <tr><td>Spring 的 <code>&lt;aop:config&gt;</code> XML</td><td><code>@Aspect</code> + <code>@Around</code> 注解，或 <code>@EnableAspectJAutoProxy</code></td></tr>
+        <tr><td>Spring Security 的 XML</td><td><strong>Spring Security 6 起 XML 命名空间和 <code>WebSecurityConfigurerAdapter</code> 都已移除</strong>，改用 Lambda DSL</td></tr>
+        <tr><td><code>&lt;protect-pointcut access="ROLE_ADMIN"&gt;</code></td><td><code>@EnableMethodSecurity</code> + <code>@PreAuthorize("hasRole('ADMIN')")</code></td></tr>
+      </tbody>
+    </table></div>
+<pre><code><i>// 8.2 节两个用例的 2026 写法</i>
+@Service
+class PhoneService {
+    @Transactional
+    @PreAuthorize("hasRole('ADMIN')")            <i>// 表达式比 access="ROLE_ADMIN" 强得多</i>
+    public Response call(String number) { ... }
+}
+
+@Configuration @EnableMethodSecurity
+class SecurityConfig {
+    @Bean SecurityFilterChain chain(HttpSecurity http) throws Exception {
+        return http.authorizeHttpRequests(a -&gt; a.anyRequest().authenticated())
+                   .build();                     <i>// Lambda DSL，替代整个 XML 文件</i>
+    }
+}</code></pre>
+
+    <h4>⑥ 拦截顺序问题：有了显式控制</h4>
+    <p>书里只能靠"绑定的先后顺序"，这非常脆弱。今天用 <code>@Order</code> / <code>Ordered</code> 显式声明：</p>
+<pre><code>@Aspect @Order(1) class HtmlDecoratingAspect { ... }   <i>// 数字小 = 更外层</i>
+@Aspect @Order(2) class BoldDecoratingAspect { ... }</code></pre>
+    <p>Spring 的内置切面之间也有既定顺序（事务、缓存、安全）。但<strong>作者的核心告诫依然成立</strong>：拦截器的组合语义测不出来，必须写纵向集成测试。今天这类测试就是 <code>@SpringBootTest</code>（第 4 章讲的完整切片）。</p>
+
+    <h4>⑦ 一条没变的判断</h4>
+    <p>作者说加粗那个例子"其实本来就不该用拦截器，折进模板里更好"。这条依然成立：<strong>AOP 适合的是真正的横切关注点</strong>（事务、安全、指标、审计、重试），不适合业务逻辑的变体。今天有更多非 AOP 的手段可选——装饰器模式 + <code>@Primary</code>、函数式组合、Micrometer 的 <code>@Observed</code>、Resilience4j 的 <code>@Retry</code>/<code>@CircuitBreaker</code>——这些其实都是"配好的 AOP"，只是你不用自己写拦截器了。</p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c8/</code> —— <code>TracingInterceptor</code>、<code>Chef</code>/<code>FrenchChef</code>/<code>ChefProxy</code>/<code>FrenchChefDelegator</code>/<code>FrenchSousChef</code>、<code>Template</code>/<code>BoldDecoratingInterceptor</code>/<code>HtmlDecoratingInterceptor</code>（顺序问题）、<code>Brokerage</code>/<code>Brokerage2</code>/<code>Transactional</code>/<code>TransactionManager</code>、<code>Car</code>/<code>CarInventory</code>/<code>CarModule</code>（warp-persist）、<code>Super</code>/<code>Sub</code>（静态方法隐藏实验）、<code>TicketBooth</code>/<code>DiscountingInterceptor</code>/<code>DiscountingInterceptorTest</code>/<code>DiscountingInterceptorIntegrationTest</code>（单元 vs 集成）。配置见 <code>myAspect.xml</code>、<code>secure.xml</code>。</p>
+  </div>
+
+  <div class="pager"><a href="ch07.html"><span>上一章</span>07 · 对象生命周期</a><a class="next" href="ch09.html"><span>下一章</span>09 · 并发、可见性与设计</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

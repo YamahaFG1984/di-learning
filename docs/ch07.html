@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>对象生命周期 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a class="on" aria-current="page" href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch7">
+  <p class="eyebrow">第 7 章</p>
+  <h2 class="title">对象生命周期</h2>
+  <p class="lede">作用域回答"活多久"，生命周期回答"在活着的过程中，什么时候该被通知什么"。本章的核心论点只有一句：<strong>生命周期不是通用的，它是领域相关的。</strong>凡是想用一套"初始化 / 销毁"钩子覆盖所有对象的设计，都会出问题。</p>
+  <ul class="chips">
+    <li>构造与终结</li>
+    <li>finalizer 的正确用法</li>
+    <li>领域相关生命周期</li>
+    <li>析构反模式</li>
+    <li>Closeable</li>
+    <li>懒加载 / 饿加载</li>
+    <li>后处理 · 多播</li>
+  </ul>
+
+  <h3><span class="sec">7.1</span>两个通用事件</h3>
+  <p><strong>构造。</strong>内存分配完成后调用构造器，做初始化。第 3 章已经论证过，把依赖接线和初始化计算都放这里是最好的：</p>
+<pre><code>public class Transporter {
+    private final ControlPanel control;
+    private final PowerCell cell;
+
+    public Transporter(ControlPanel control, PowerCell cell) {
+        this.control = control;  this.cell = cell;
+        <b>cell.charge();</b>          <i>// 初始化逻辑</i>
+        <b>control.activate();</b>
+    }
+    public void energize() { ... }   <i>// 构造器返回后就可以安全使用</i>
+}</code></pre>
+
+  <p><strong>终结。</strong>C++ 有析构函数，Java 有 <code>finalize()</code>。但两者的语义天差地别：</p>
+  <div class="box trap">
+    <span class="tag">⚠ finalizer 不能用来释放有限资源</span>
+    <p>Java 只保证 finalizer 在对象被回收<em>之前</em>运行。它可能很早很频繁，也可能很晚很稀少，可能要等到应用关闭才跑，<strong>也可能根本不跑</strong>（应用异常退出）。</p>
+<pre><code>public class Thumbnail {
+    private InputStream data;
+
+    public Image display(String path) throws IOException {
+        data = fileSystem.getPath(path).newInputStream();   <i>// 打开文件</i>
+        ...
+    }
+
+    @Override protected void finalize() throws Throwable {
+        <b>data.close();</b>          <i>// ← 永远不知道什么时候执行</i>
+        super.finalize();
+    }
+}</code></pre>
+    <p>用户翻几十张图，几十个文件句柄同时开着，很容易耗尽操作系统资源——<strong>而它们其实早就不用了</strong>。</p>
+  </div>
+  <p>finalizer 的两个<em>合法</em>用途：</p>
+  <ul>
+    <li><strong>兜底检查</strong>——不是替代关闭，而是发现"忘了关"：
+<pre><code>@Override protected void finalize() throws Throwable {
+    if (null != data) {
+        logger.warning("unclosed thumbnail: " + this);   <i>// 报警</i>
+        data.close();
+    }
+    super.finalize();
+}</code></pre></li>
+    <li><strong>释放非托管内存</strong>——调用本地方法释放 C 库持有的内存。</li>
+  </ul>
+
+  <h3><span class="sec">7.2</span>生命周期是领域相关的</h3>
+  <p>Servlet 和数据库连接都由容器管理，都活在同一个 Web 应用里，但它们的生命周期完全不同：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 860 300" role="img" aria-label="Servlet 的三阶段生命周期与数据库连接的四事件生命周期对比，两者的阶段划分完全不同" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+
+      <text x="16" y="20" font-size="10.5" fill="#A94A16">Servlet</text>
+      <rect x="16" y="34" width="110" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="71" y="55" text-anchor="middle" font-size="10">已构造</text>
+      <line x1="71" y1="70" x2="71" y2="96" stroke="currentColor" stroke-width="1.2" marker-end="url(#b3)"/>
+      <text x="82" y="88" font-size="9" fill="#A94A16">init()</text>
+      <rect x="16" y="100" width="110" height="34" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="71" y="121" text-anchor="middle" font-size="10" fill="#A94A16">就绪</text>
+      <line x1="71" y1="136" x2="71" y2="162" stroke="currentColor" stroke-width="1.2" marker-end="url(#b3)"/>
+      <text x="82" y="154" font-size="9">service() ×N</text>
+      <rect x="16" y="166" width="110" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="71" y="187" text-anchor="middle" font-size="10">服务中</text>
+      <line x1="71" y1="202" x2="71" y2="228" stroke="currentColor" stroke-width="1.2" marker-end="url(#b3)"/>
+      <text x="82" y="220" font-size="9" fill="#A94A16">destroy()</text>
+      <rect x="16" y="232" width="110" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="71" y="253" text-anchor="middle" font-size="10">已销毁</text>
+      <text x="71" y="288" text-anchor="middle" font-size="9" opacity=".65">线性、一次性</text>
+
+      <line x1="196" y1="16" x2="196" y2="290" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="232" y="20" font-size="10.5" fill="#0C6660">数据库连接（池化）</text>
+      <rect x="232" y="34" width="120" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="292" y="55" text-anchor="middle" font-size="10">已构造</text>
+      <line x1="292" y1="70" x2="292" y2="96" stroke="currentColor" stroke-width="1.2" marker-end="url(#b3)"/>
+      <text x="303" y="88" font-size="9" fill="#0C6660">open()</text>
+      <rect x="232" y="100" width="120" height="34" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="292" y="121" text-anchor="middle" font-size="10" fill="#0C6660">IDLE 在池中</text>
+
+      <path d="M354 110 L440 110" stroke="currentColor" stroke-width="1.2" fill="none" marker-end="url(#b3)"/>
+      <text x="397" y="103" text-anchor="middle" font-size="9" fill="#0C6660">onCheckout()</text>
+      <rect x="444" y="100" width="120" height="34" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="504" y="121" text-anchor="middle" font-size="10" fill="#0C6660">IN_USE</text>
+      <path d="M504 138 L504 156 L292 156 L292 140" stroke="currentColor" stroke-width="1.2" fill="none" marker-end="url(#b3)"/>
+      <text x="398" y="170" text-anchor="middle" font-size="9" fill="#0C6660">onReturn()</text>
+
+      <line x1="292" y1="176" x2="292" y2="222" stroke="currentColor" stroke-width="1.2" marker-end="url(#b3)"/>
+      <text x="303" y="202" font-size="9" fill="#0C6660">close()（仅 IDLE 时允许）</text>
+      <rect x="232" y="226" width="120" height="34" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="292" y="247" text-anchor="middle" font-size="10">已释放</text>
+
+      <text x="600" y="118" font-size="9.5" opacity=".75">循环、可重入</text>
+      <text x="600" y="136" font-size="9.5" opacity=".75">IDLE 期间还要做连接校验</text>
+      <text x="600" y="154" font-size="9.5" opacity=".75">（发 SELECT 1 防超时）</text>
+      <text x="600" y="180" font-size="9.5" fill="#8E2A26">同一套 init/destroy 钩子</text>
+      <text x="600" y="198" font-size="9.5" fill="#8E2A26">套不上这两个模型</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>左右两个状态机没有任何共同结构。</b>Servlet 是线性的、一次性的；池化连接是循环的、可重入的，还有一个"IDLE 时做后台校验"的独立阶段。这就是本章标题的含义——<b>不存在一套通用生命周期</b>。</figcaption>
+  </figure>
+
+  <p>把 servlet 接入 DI（用 <code>guice-servlet</code> 之类的集成层）之后，生命周期还能<strong>级联到抽象层之下</strong>：</p>
+  <div class="split">
+    <div class="bad"><h5>裸 Servlet：无法注入</h5>
+<pre><code>public class NewsServlet extends HttpServlet {
+    private Connection con;              <i>// 具体类型</i>
+    private final NewsService newsService;
+
+    public NewsServlet() {
+        newsService = new NewsService();  <i>// 手工构造</i>
+    }
+    public void init() {
+        con = DriverManager.getConnection(..);  <i>// 紧耦合到 JDBC</i>
+    }
+    public void destroy() { con.close(); }
+}</code></pre>
+    </div>
+    <div class="good"><h5>接入 DI 后</h5>
+<pre><code>@Singleton
+public class NewsServlet extends HttpServlet {
+    private final PersistenceService persistence;  <i>// 抽象</i>
+    private final NewsService newsService;
+
+    @Inject public NewsServlet(PersistenceService p,
+                               NewsService n) { ... }
+
+    public void init()    { persistence.start(); }
+    public void destroy() { persistence.shutdown(); }
+}</code></pre>
+    </div>
+  </div>
+  <p>右边的 <code>PersistenceService</code> 背后可以是数据库、平面文件、内存网格——<strong>servlet 的生命周期事件被自然地传导下去，而它不知道下面是什么。</strong></p>
+
+  <h3><span class="sec">7.3</span>析构反模式</h3>
+  <p>Spring 和 PicoContainer 都提供一个"应用关闭时调用"的通用销毁钩子：</p>
+<pre><code>&lt;bean id="thumbnail" class="files.Thumbnail" <b>destroy-method="close"</b>&gt;
+    &lt;constructor-arg ref="fileSystem"/&gt;
+&lt;/bean&gt;</code></pre>
+  <p>看起来比 finalizer 强，但对 <code>Thumbnail</code> 来说<strong>问题一模一样</strong>：文件句柄要一直开到应用退出。正确做法是"每张图预览完就关"，而通用 destroy 钩子表达不了这件事。</p>
+  <p>作者还指出两个额外问题：</p>
+  <ul>
+    <li><strong>销毁顺序不确定</strong>。<code>ZipFileSystem.close()</code> 和 <code>Thumbnail.close()</code> 谁先跑？如果一个在关闭时还需要另一个，就会撞上"依赖已经关了"的非法状态。于是你被迫写这种防御性代码：
+<pre><code>public void close() {
+    if (null != reader) {
+        if (reader.isOpen()) reader.someLastMinuteLogic();   <i>// 扭曲且不必要</i>
+        reader = null;
+    }
+    shutdownMyself();
+}</code></pre></li>
+    <li><strong>误用泛滥</strong>。作者见过给 Java Swing 窗口写"析构函数"来释放控件的——而 Swing 控件是托管内存，根本不需要手动释放。</li>
+  </ul>
+  <div class="box note">
+    <span class="tag">替代方案：领域相关的终结契约</span>
+    <p>把"可关闭"做成类型性质，而不是外部配置。<code>java.io.Closeable</code> 的文档说得很清楚：<em>"Closeable 是一个可以被关闭的数据源或目的地。"</em></p>
+<pre><code>@ThreadSafe
+public class ResourceCloser implements Runnable {
+    @GuardedBy("lock") private final List&lt;Closeable&gt; toClose = new ArrayList&lt;&gt;();
+    private final Object lock = new Object();
+
+    public void schedule(Closeable resource) {          <i>// 用完的资源排队</i>
+        synchronized (lock) { toClose.add(resource); }
+    }
+    public void run() {                                 <i>// 低优先级线程周期性关闭</i>
+        synchronized (lock) { for (Closeable r : toClose) r.close(); }
+    }
+}</code></pre>
+    <p>这样关闭时机由业务语义决定，而不是由"应用什么时候退出"决定。</p>
+  </div>
+
+  <h3><span class="sec">7.4</span>一个复杂样本：有状态 EJB</h3>
+  <p>作者拿有状态会话 Bean 举例，说明"复杂的托管生命周期"能长成什么样。购物车：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 250" role="img" aria-label="有状态 EJB 的生命周期：构造、PostConstruct、可反复进出的钝化与激活状态、最终 Remove" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="b4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <rect x="16" y="100" width="104" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="68" y="124" text-anchor="middle" font-size="10">已构造</text>
+      <line x1="122" y1="119" x2="164" y2="119" stroke="currentColor" stroke-width="1.2" marker-end="url(#b4)"/>
+      <text x="143" y="111" text-anchor="middle" font-size="8.5" fill="#A94A16">@PostConstruct</text>
+
+      <rect x="168" y="100" width="120" height="38" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="228" y="118" text-anchor="middle" font-size="10" fill="#A94A16">活跃</text>
+      <text x="228" y="132" text-anchor="middle" font-size="8.5" fill="#A94A16">add() / list()</text>
+
+      <path d="M290 110 L370 110" stroke="currentColor" stroke-width="1.2" fill="none" marker-end="url(#b4)"/>
+      <text x="330" y="102" text-anchor="middle" font-size="8.5" fill="#0C6660">@PrePassivate</text>
+      <rect x="374" y="92" width="120" height="38" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="434" y="110" text-anchor="middle" font-size="10" fill="#0C6660">钝化 · 已存盘</text>
+      <text x="434" y="124" text-anchor="middle" font-size="8.5" fill="#0C6660">等待用户回来</text>
+      <path d="M374 138 L294 138" stroke="currentColor" stroke-width="1.2" fill="none" marker-end="url(#b4)"/>
+      <text x="334" y="152" text-anchor="middle" font-size="8.5" fill="#0C6660">@PostActivate 刷新数据</text>
+
+      <line x1="228" y1="140" x2="228" y2="188" stroke="currentColor" stroke-width="1.2" marker-end="url(#b4)"/>
+      <text x="240" y="168" font-size="8.5" fill="#8E2A26">@Remove（结账）</text>
+      <rect x="168" y="192" width="120" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="228" y="216" text-anchor="middle" font-size="10">已销毁</text>
+
+      <rect x="520" y="92" width="110" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="575" y="116" text-anchor="middle" font-size="10">数据库 / 缓存</text>
+      <path d="M496 105 L516 105" stroke="#0C6660" stroke-width="1.1" fill="none" marker-end="url(#b4)"/>
+      <path d="M516 122 L496 122" stroke="#0C6660" stroke-width="1.1" fill="none" marker-end="url(#b4)"/>
+
+      <text x="660" y="112" font-size="9.5" opacity=".7">六个钩子，只为了</text>
+      <text x="660" y="128" font-size="9.5" opacity=".7">一个购物车</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>钝化 / 激活这一对是关键。</b>用户离开时把购物车存盘、回来时重新加载并<b>刷新可能已经变化的价格</b>——这两件事只能由生命周期钩子表达，构造器和 finalizer 都做不到。<code>@PostConstruct</code> 至今仍是 Jakarta 标准注解，其余的随 EJB 一起淡出了。</figcaption>
+  </figure>
+
+  <p>作者顺带批评了 EJB 的注入方式：<code>@EJB</code> 只能打在<strong>字段</strong>上，不支持构造器注入——于是无法 mock、无法 <code>final</code>。第 3 章那套论证全部适用。</p>
+
+  <h3><span class="sec">7.5</span>懒加载 vs 饿加载</h3>
+  <div class="tw compact"><table>
+    <thead><tr><th></th><th>饿加载 eager</th><th>懒加载 lazy</th></tr></thead>
+    <tbody>
+      <tr><td>何时构造单例</td><td>注入器启动时全建好</td><td>首次被需要时才建</td></tr>
+      <tr><td>适合</td><td>生产服务器：把开销提前付掉，运行期响应快</td><td>桌面/嵌入式应用求快速启动；测试与调试（大量服务根本用不到）</td></tr>
+      <tr><td>Guice</td><td><code>Stage.PRODUCTION</code> / <code>asEagerSingleton()</code></td><td><code>Stage.DEVELOPMENT</code>（默认）</td></tr>
+      <tr><td>Spring</td><td>默认</td><td><code>lazy-init="true"</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="box trap">
+    <span class="tag">⚠ 一个容易忽略的坑</span>
+    <p><code>bind(MyService.class).toInstance(new MyServiceImpl())</code> 隐式就是饿加载——但<strong><code>MyServiceImpl</code> 自己享受不到依赖注入</strong>（你是手工 new 的）。作者说"应尽量避免"。</p>
+  </div>
+
+  <h3><span class="sec">7.6</span>自定义生命周期：后处理与多播</h3>
+  <p>库不可能预置所有领域的生命周期模型，所以它给你扩展点。作者的例子是商场里的广告屏：午夜切到"商场已关门"画面，早上切回正常节目。</p>
+<pre><code>public class Screen {
+    private final Feed daytimeFeed;
+    private final Feed overnightFeed;
+
+    public void suspend() { show(overnightFeed); }
+    public void resume()  { show(daytimeFeed); }
+}</code></pre>
+
+  <h4>做法一：后处理（Spring <code>BeanPostProcessor</code>）</h4>
+<pre><code>public class LifecyclePostProcessor implements BeanPostProcessor {
+    private final List&lt;Screen&gt; screens = new ArrayList&lt;&gt;();
+
+    public Object postProcessAfterInitialization(Object object, String key) {
+        <b>if (object instanceof Screen) screens.add((Screen) object);</b>   <i>// 登记</i>
+        return object;                                                  <i>// 原样返回</i>
+    }
+
+    public void suspendAllScreens() {           <i>// 定时器午夜调用</i>
+        for (Screen s : screens) s.suspend();
+    }
+}</code></pre>
+  <p>收益：不用给每块屏写一个定时器，也不用让 <code>Screen</code> 自己关心时间。<strong>一个生命周期管理器，更少代码、更少测试、更少故障点。</strong></p>
+
+  <h4>做法二：多播（PicoContainer Gems）</h4>
+  <p>把类的能力表达成<strong>角色接口</strong>（回到第 3 章的接口注入思想）：</p>
+<pre><code>public class Screen implements <b>Suspendable, Resumable</b> { ... }
+
+public interface Suspendable { void suspend(); }
+public interface Resumable   { void resume(); }</code></pre>
+<pre><code>public void suspendAll() {
+    Suspendable target = (Suspendable) Multicaster.object(
+            injector, true, new StandardProxyFactory());   <i>// 动态生成的多播代理</i>
+    target.suspend();      <i>// 一次调用，转发给容器里所有 Suspendable</i>
+}</code></pre>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 200" role="img" aria-label="后处理需要自己维护注册表并遍历，多播由框架生成代理自动转发给所有实现该角色接口的实例" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="b5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5">后处理</text>
+      <rect x="16" y="34" width="110" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="71" y="56" text-anchor="middle" font-size="10">管理器</text>
+      <line x1="128" y1="52" x2="168" y2="52" stroke="currentColor" stroke-width="1.2" marker-end="url(#b5)"/>
+      <rect x="172" y="34" width="118" height="36" rx="3" fill="none" stroke="#A94A16" stroke-width="1.3"/>
+      <text x="231" y="50" text-anchor="middle" font-size="9.5" fill="#A94A16">自己维护的列表</text>
+      <text x="231" y="63" text-anchor="middle" font-size="8.5" fill="#A94A16">List&lt;Screen&gt;</text>
+      <line x1="292" y1="44" x2="332" y2="30" stroke="currentColor" stroke-width="1.1" marker-end="url(#b5)"/>
+      <line x1="292" y1="52" x2="332" y2="52" stroke="currentColor" stroke-width="1.1" marker-end="url(#b5)"/>
+      <line x1="292" y1="60" x2="332" y2="74" stroke="currentColor" stroke-width="1.1" marker-end="url(#b5)"/>
+      <text x="340" y="34" font-size="9.5">Screen</text>
+      <text x="340" y="56" font-size="9.5">Screen</text>
+      <text x="340" y="78" font-size="9.5">Screen</text>
+      <text x="430" y="52" font-size="9.5" opacity=".7">耦合到具体类型；新增类型要改管理器</text>
+
+      <line x1="16" y1="106" x2="784" y2="106" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="16" y="130" font-size="10.5" fill="#0C6660">多播</text>
+      <rect x="16" y="144" width="110" height="36" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="71" y="166" text-anchor="middle" font-size="10">管理器</text>
+      <line x1="128" y1="162" x2="168" y2="162" stroke="currentColor" stroke-width="1.2" marker-end="url(#b5)"/>
+      <text x="148" y="154" text-anchor="middle" font-size="8" opacity=".65">一次调用</text>
+      <rect x="172" y="144" width="118" height="36" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4" stroke-dasharray="4 3"/>
+      <text x="231" y="160" text-anchor="middle" font-size="9.5" fill="#0C6660">框架生成的代理</text>
+      <text x="231" y="173" text-anchor="middle" font-size="8.5" fill="#0C6660">Suspendable</text>
+      <line x1="292" y1="154" x2="332" y2="140" stroke="#0C6660" stroke-width="1.1" marker-end="url(#b5)"/>
+      <line x1="292" y1="162" x2="332" y2="162" stroke="#0C6660" stroke-width="1.1" marker-end="url(#b5)"/>
+      <line x1="292" y1="170" x2="332" y2="184" stroke="#0C6660" stroke-width="1.1" marker-end="url(#b5)"/>
+      <text x="340" y="144" font-size="9.5">任何 Suspendable</text>
+      <text x="340" y="166" font-size="9.5">任何 Suspendable</text>
+      <text x="340" y="188" font-size="9.5">任何 Suspendable</text>
+      <text x="480" y="162" font-size="9.5" fill="#0C6660">只耦合到角色接口，新增实现零改动</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>多播是后处理的进化版。</b>关键差别在耦合方向：后处理管理器认识 <code>Screen</code> 这个类；多播管理器只认识 <code>Suspendable</code> 这个角色。<b>把 Screen 的实现换掉、或者新增一种可挂起的组件，多播方案一行都不用改。</b></figcaption>
+  </figure>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① <code>finalize()</code>：从"不推荐"变成"正在被删除"</h4>
+    <p>作者当年只是警告别滥用。之后的历史更激烈：</p>
+    <div class="tw compact"><table>
+      <thead><tr><th>版本</th><th>发生了什么</th></tr></thead>
+      <tbody>
+        <tr><td>Java 7 (2011)</td><td><code>AutoCloseable</code> + try-with-resources —— 确定性释放有了语法支持</td></tr>
+        <tr><td>Java 9 (2017)</td><td><code>Object.finalize()</code> 标记为 <code>@Deprecated</code>；引入 <code>java.lang.ref.Cleaner</code> 作为替代</td></tr>
+        <tr><td>Java 18 (2022)</td><td><strong>JEP 421：终结机制标记为"将被移除"</strong>；可用 <code>--finalization=disabled</code> 提前关掉</td></tr>
+        <tr><td>今天</td><td>新代码里写 <code>finalize()</code> 等于写错</td></tr>
+      </tbody>
+    </table></div>
+    <p>作者说的那两个"合法用途"，现代对应物是：</p>
+<pre><code><i>// 用途一「兜底 + 报警」→ try-with-resources 让你根本不会忘</i>
+try (InputStream data = fileSystem.newInputStream(path)) {
+    return renderThumbnail(data);
+}   <i>// 出块即关，异常也关。7.1 节整个问题消失</i>
+
+<i>// 用途二「释放本地内存」→ Cleaner（不是 finalize）</i>
+class NativeBuffer implements AutoCloseable {
+    private static final Cleaner CLEANER = Cleaner.create();
+    private final Cleaner.Cleanable cleanable;
+
+    NativeBuffer(long addr) {
+        this.cleanable = CLEANER.register(this, () -&gt; freeNative(addr));
+        <i>// 注意：lambda 里不能捕获 this，否则对象永远不可达回收</i>
+    }
+    public void close() { cleanable.clean(); }
+}</code></pre>
+    <p><em>更彻底的方案：Java 22+ 的 Foreign Function &amp; Memory API（<code>Arena</code>）把本地内存的生命周期也做成了 try-with-resources。</em></p>
+
+    <h4>② 7.3 节的"析构反模式"：结论正确，但 Spring 后来把它做对了</h4>
+    <p>原书批评通用 <code>destroy-method</code> 有两点：时机不对、顺序不确定。Spring 后来补了两个机制：</p>
+<pre><code><i>// 依赖顺序：Spring 保证「被依赖者后销毁」，7.3 节那段防御代码不再需要</i>
+@Bean(destroyMethod = "close") DataSource ds() { ... }
+
+<i>// 阶段化启停：SmartLifecycle 让你显式指定顺序</i>
+@Component
+class MessageListener implements SmartLifecycle {
+    public int getPhase() { return 100; }        <i>// phase 小的先启动、后停止</i>
+    public void start() { ... }
+    public void stop()  { ... }                  <i>// 优雅停机时按 phase 逆序调用</i>
+}</code></pre>
+    <p>但<strong>核心批评依然成立</strong>：<code>destroy-method</code> 适合"跟应用同生共死的资源"（连接池、线程池、消息监听器），不适合"用一次就该关的资源"（<code>Thumbnail</code> 的文件流）。后者永远该用 try-with-resources。</p>
+
+    <h4>③ 生命周期注解：注意 Java 11 的那次搬家</h4>
+<pre><code><i>// 这两个注解至今是标准做法，但它们不在 JDK 里了</i>
+import jakarta.annotation.PostConstruct;    <i>// Java 11 起从 JDK 移除（原 javax.annotation）</i>
+import jakarta.annotation.PreDestroy;       <i>// 需要显式加 jakarta.annotation-api 依赖</i>
+
+@Service
+class NewsService {
+    @PostConstruct void start()    { persistence.start(); }
+    @PreDestroy   void shutdown()  { persistence.shutdown(); }
+}</code></pre>
+    <p>这两个注解的价值在第 3 章说过：<code>@PostConstruct</code> 保证在<strong>全部依赖注入完毕之后</strong>执行，正好解决了当年"in-construction 问题"无解的困境。</p>
+    <p>Spring 侧还有三条等价路径：<code>InitializingBean</code>/<code>DisposableBean</code> 接口（侵入，不推荐）、<code>@Bean(initMethod=, destroyMethod=)</code>（用于第三方类，即第 3 章的"密封代码"）、<code>ApplicationListener&lt;ContextRefreshedEvent&gt;</code>。</p>
+
+    <h4>④ 多播 → 应用事件，这是本章预言最准的一节</h4>
+    <p>7.6 节那个"给所有 <code>Suspendable</code> 广播一次调用"的多播代理，今天有了标准形态，而且更好：</p>
+<pre><code><i>// 发布方：不需要知道谁在听</i>
+@Component
+class MallClock {
+    private final ApplicationEventPublisher events;
+
+    @Scheduled(cron = "0 0 0 * * *")
+    void midnight() { events.publishEvent(new MallClosed(Instant.now())); }
+}
+
+<i>// 订阅方：不需要实现任何角色接口，也不需要被注册</i>
+@Component
+class Screen {
+    @EventListener void onClosed(MallClosed e) { show(overnightFeed); }
+    @EventListener void onOpened(MallOpened e) { show(daytimeFeed); }
+}</code></pre>
+    <p>比原书的两种方案都强：不需要动态代理（所以没有第 8 章那些代理限制）、不需要角色接口、支持<strong>异步</strong>（<code>@Async</code>）、支持<strong>事务边界</strong>（<code>@TransactionalEventListener</code>，只在提交后才触发）。</p>
+    <p><em>顺带说：<code>BeanPostProcessor</code> 至今还在，且是 Spring 内部实现 <code>@Autowired</code>、<code>@Transactional</code> 等一切注解的机制。但业务代码基本不该直接用它——用事件。</em></p>
+
+    <h4>⑤ 懒 / 饿加载</h4>
+    <ul>
+      <li>Spring Boot 2.2+ 支持全局懒加载：<code>spring.main.lazy-initialization=true</code>。<strong>用于加快开发期启动，不建议用于生产</strong>——它把"启动失败"推迟成了"运行时失败"。</li>
+      <li>Guice 的 <code>Stage.PRODUCTION</code> / <code>DEVELOPMENT</code> 沿用至今。</li>
+      <li>新增维度：<strong>AOT / GraalVM 原生镜像</strong>。Spring Boot 3 起可以在<em>构建期</em>就把 bean 定义算好，启动时间从秒级降到毫秒级。这相当于"比饿加载还早"——把加载搬到了编译期。这也是第 2 章 <code>BeanRegistrar</code> 出现的原因。</li>
+    </ul>
+
+    <h4>⑥ 有状态 EJB：这一节可以当历史读</h4>
+    <p>Jakarta EE 11 里 Enterprise Beans 仍然存在，但已被官方定位为遗留技术（EJB 的很多能力被 CDI 和 <code>@Transactional</code> 吸收）。<code>@PrePassivate</code>/<code>@PostActivate</code> 那套"钝化—激活"模型今天几乎见不到——现代做法是<strong>把状态放外部存储（Redis / 数据库），服务端保持无状态</strong>。原因很简单：无状态服务才能水平扩展。</p>
+    <p><em>但请注意：<strong>模型消失了，问题没消失。</strong>把购物车存进 Redis、下次请求再取出来并"刷新可能变化的价格"——这就是 <code>@PrePassivate</code>/<code>@PostActivate</code> 干的事，只是你现在手写它。</em></p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/screen/</code> —— <code>Transporter</code>/<code>PowerCell</code>/<code>ControlPanel</code>（构造器初始化）、<code>Thumbnail</code>/<code>FileSystem</code>/<code>DiskReader</code>（finalizer 问题）、<code>ResourceCloser</code>（Closeable 方案）、<code>NewsServlet</code>/<code>NewsService</code>/<code>NewsController</code>/<code>PersistenceService</code>、<code>PooledConnection</code>（连接生命周期）、<code>Sloth</code>（懒加载）。<code>prasanna/src/arcade/</code> —— <code>Screen</code>、<code>Suspendable</code>、<code>Resumable</code>、<code>LifecyclePostProcessor</code>、<code>LifecycleManager</code>。配置见 <code>screens.xml</code>、<code>news.xml</code>、<code>power.xml</code>、<code>persistence.xml</code>。</p>
+  </div>
+
+  <div class="pager"><a href="ch06.html"><span>上一章</span>06 · 自定义作用域与陷阱</a><a class="next" href="ch08.html"><span>下一章</span>08 · 拦截、代理与 AOP</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

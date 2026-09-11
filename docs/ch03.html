@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>注入方式的取舍 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a class="on" aria-current="page" href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch3">
+  <p class="eyebrow">第 3 章</p>
+  <h2 class="title">注入方式的取舍</h2>
+  <p class="lede">构造器注入还是 setter 注入？作者反复强调：<strong>这不是口味问题</strong>。选错会导致对象半成品、线程可见性丢失、以及一类无解的初始化死锁。本章给出完整的决策依据，以及当依赖"来得太晚"或"用一次就没了"时的三种补救模式。</p>
+  <ul class="chips">
+    <li>构造器 / setter / 接口注入 / 方法装饰</li>
+    <li>不可变与对象有效性</li>
+    <li>构造器金字塔</li>
+    <li>循环引用 · in-construction</li>
+    <li>Provider / Assisted / Builder</li>
+    <li>密封代码</li>
+  </ul>
+
+  <h3><span class="sec">3.1</span>四种注入习语</h3>
+  <p>差别的根源在于<strong>构造器和普通方法的语言级差异</strong>。构造器：不返回值、必须执行完对象才算构造好、能给 <code>final</code> 字段赋值、每个实例只调一次、不能有任意名字、不能是虚方法。这些限制既是它的短板，也是它的全部优势来源。</p>
+
+  <div class="split">
+    <div class="good"><h5>构造器注入</h5>
+<pre><code>public class Emailer {
+    private final SpellChecker checker;   <i>// final ✓</i>
+
+    public Emailer(SpellChecker checker) {
+        this.checker = checker;
+    }
+}</code></pre>
+    </div>
+    <div class="bad"><h5>setter 注入</h5>
+<pre><code>public class Emailer {
+    private SpellChecker checker;         <i>// 不能 final</i>
+
+    public void setSpellChecker(SpellChecker c) {
+        this.checker = c;
+    }
+}</code></pre>
+    </div>
+  </div>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 860 210" role="img" aria-label="构造器注入在实例存在之前完成接线，setter 注入在实例已经存在之后才接线，中间存在一个半成品窗口" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    <marker id="a5r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8E2A26"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5" fill="#0C6660">构造器注入</text>
+      <line x1="16" y1="60" x2="820" y2="60" stroke="currentColor" stroke-width="1" opacity=".35"/>
+      <circle cx="120" cy="60" r="4" fill="currentColor"/>
+      <text x="120" y="48" text-anchor="middle" font-size="9.5">请求键</text>
+      <circle cx="300" cy="60" r="4" fill="currentColor"/>
+      <text x="300" y="48" text-anchor="middle" font-size="9.5">解析依赖</text>
+      <circle cx="480" cy="60" r="5" fill="#0C6660"/>
+      <text x="480" y="48" text-anchor="middle" font-size="9.5" fill="#0C6660">构造 + 接线（原子）</text>
+      <line x1="486" y1="60" x2="700" y2="60" stroke="#0C6660" stroke-width="2.5"/>
+      <text x="600" y="80" text-anchor="middle" font-size="9.5" fill="#0C6660">对象一出现就是完整、有效、可发布的</text>
+      <circle cx="700" cy="60" r="4" fill="#0C6660"/>
+      <text x="700" y="48" text-anchor="middle" font-size="9.5" fill="#0C6660">交付</text>
+
+      <line x1="16" y1="112" x2="844" y2="112" stroke="currentColor" stroke-width="1" opacity=".2"/>
+
+      <text x="16" y="140" font-size="10.5" fill="#8E2A26">setter 注入</text>
+      <line x1="16" y1="180" x2="820" y2="180" stroke="currentColor" stroke-width="1" opacity=".35"/>
+      <circle cx="120" cy="180" r="4" fill="currentColor"/>
+      <text x="120" y="168" text-anchor="middle" font-size="9.5">请求键</text>
+      <circle cx="240" cy="180" r="5" fill="#8E2A26"/>
+      <text x="240" y="168" text-anchor="middle" font-size="9.5" fill="#8E2A26">构造（空壳）</text>
+      <line x1="246" y1="180" x2="614" y2="180" stroke="#8E2A26" stroke-width="2.5" stroke-dasharray="5 3"/>
+      <text x="430" y="200" text-anchor="middle" font-size="9.5" fill="#8E2A26">半成品窗口：字段为 null，非 final，其他线程可能已经看得到它</text>
+      <circle cx="430" cy="180" r="4" fill="#8E2A26"/>
+      <text x="430" y="168" text-anchor="middle" font-size="9.5" fill="#8E2A26">setter①</text>
+      <circle cx="614" cy="180" r="4" fill="#8E2A26"/>
+      <text x="614" y="168" text-anchor="middle" font-size="9.5" fill="#8E2A26">setter②（可能被忘记）</text>
+      <line x1="620" y1="180" x2="700" y2="180" stroke="currentColor" stroke-width="2"/>
+      <circle cx="700" cy="180" r="4" fill="currentColor"/>
+      <text x="700" y="168" text-anchor="middle" font-size="9.5">交付</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>唯一的实质差别是那个虚线窗口。</b>构造器注入没有它——对象要么不存在，要么完整。setter 注入有它，于是所有关于"忘了 set"、"字段不能 final"、"别的线程看到 null"的问题都从这个窗口里长出来。</figcaption>
+  </figure>
+
+  <h4>接口注入（已淘汰，但思想还在）</h4>
+  <p>每个依赖一个角色接口：</p>
+<pre><code>public class Starship implements PhaserMountable, ReactorMountable, ShuttleDockable {
+    public void mount(Phaser phaser)  { this.phaser = phaser; }
+    public void mount(Reactor r)      { this.reactor = r; }
+    public void dock(Shuttle s)       { this.shuttle = s; }
+}</code></pre>
+  <p>优点是方法名可以起得有意义（<code>load(Cargo)</code> 比 <code>setCargo(Cargo)</code> 好读）。缺点致命：极度啰嗦，每个依赖一个接口，类签名被淹没。只有已消亡的 Apache Avalon 支持它。</p>
+  <p><em>但这个思路没死</em>：它演化成了<strong>角色接口 / 生命周期回调接口</strong>——Spring 的 <code>InitializingBean</code>、<code>BeanFactoryAware</code>，第 7 章的 <code>Suspendable</code>/<code>Resumable</code>，都是这个模式的后代。</p>
+
+  <h4>方法装饰（AOP 注入）</h4>
+  <p>让一个方法本身变成注入器背后的工厂。Pez 糖果机：</p>
+<pre><code>public class Dispenser {
+    public Pez dispense() { return null; }    <i>// 空实现，永远不会被真的调用</i>
+}</code></pre>
+<pre><code>&lt;bean id="dispenser" class="candy.Dispenser"&gt;
+    <b>&lt;lookup-method name="dispense" bean="pez"/&gt;</b>
+&lt;/bean&gt;</code></pre>
+  <p>Spring 拦截 <code>dispense()</code>，每次调用返回一个新的、由容器完整装配的 <code>Pez</code>。用途稀少但确实存在——它解决的是 3.3 节的"重注入问题"。<em>这个特性今天还在，叫 lookup method injection，但 <code>ObjectProvider</code> 已经是更好的写法。</em></p>
+
+  <div class="box trap">
+    <span class="tag">⚠ 字段注入</span>
+    <p>Guice 和 Spring 都支持直接往字段上注入：</p>
+<pre><code>public class BrewingVat {
+    @Inject Barley barley;
+    @Inject Yeast yeast;
+}</code></pre>
+    <p>作者的评价一针见血：<strong>"写教程和示例代码时很好用，实践中价值很小。"</strong>因为——① 测试里没法设置依赖（无论真的还是 mock），单元测试直接失效；② 字段是构造后才赋值的，<strong>不可能声明为 <code>final</code></strong>。</p>
+    <p><em>2026 补充：</em>这个判断已经成为行业共识。Spring 官方文档明确不推荐字段注入，IntelliJ IDEA 会对 <code>@Autowired</code> 字段直接报 warning（"Field injection is not recommended"）。Dagger 保留了字段注入，但只用于 Android 那些"实例由系统创建、你插不了手"的场景（<code>Activity</code>、<code>Fragment</code>）——这恰好是 3.4 节"密封代码"的现代版本。</p>
+  </div>
+
+  <h3><span class="sec">3.2</span>构造器 vs setter：五轮交锋</h3>
+
+  <h4>第 1 轮：不可变性 —— 构造器胜</h4>
+  <p>只有构造器能给 <code>final</code> 字段赋值。<code>final</code> 不只是"防止手滑改掉"，它还是 Java 内存模型的<strong>安全发布</strong>保证：构造器正常返回后，所有线程都能看到 <code>final</code> 字段的正确值，不需要额外同步。<em>这一点第 9 章会详细展开，它是本书最重要的技术结论之一。</em></p>
+
+  <h4>第 2 轮：对象有效性 —— 构造器胜</h4>
+  <p>作者称之为"最被低估的 OOP 设计问题"。看这个 <code>Blender</code>：</p>
+<pre><code>public class Blender {
+    private GlassJar jar;
+    private Blades blades;
+
+    @Inject
+    public void setJar(GlassJar jar) { this.jar = jar; }
+
+    public void setBlades(Blades blades) { this.blades = blades; }   <b>// 少了 @Inject</b>
+
+    public void frappe() {
+        jar.fillWithOranges();
+        blades.run();     <i>// NullPointerException</i>
+    }
+}</code></pre>
+  <p>编译通过，容器启动正常，一切看起来都对——直到 <code>frappe()</code> 被调用。而且单元测试里也会踩到同样的坑：</p>
+<pre><code>@Test void blendOranges() {
+    new Blender().frappe();   <i>// 忘了调 setter → 假阴性：报错了但 Blender 代码没问题</i>
+}</code></pre>
+  <p>换成构造器注入，<strong>这个测试根本编译不过</strong>。错误从"运行时的莫名 NPE"提前到了"编译错误"。</p>
+
+  <p>书里还有一个更完整的 <code>UnsafeObject</code> 例子，值得原样搬过来。它同时暴露了 setter 注入的<strong>所有</strong>失败模式：</p>
+<pre><code>public class UnsafeObject {
+    private Slippery slippery;
+    private Shady shady;
+    public UnsafeObject() { }
+    public void setSlippery(Slippery s) { this.slippery = s; }
+    public void setShady(Shady s)       { this.shady = s; }
+    public void init() { ... }        <i>// 还必须记得调这个</i>
+}</code></pre>
+  <p>下面每一种配置都能通过启动，每一种都有问题：</p>
+  <ol>
+    <li>两个依赖都没设 → 第一次使用就崩；</li>
+    <li>只设了 <code>slippery</code> → 用到 <code>shady</code> 才崩，<strong>更危险</strong>（用 slippery 的路径一直正常）；</li>
+    <li>两个都设了但忘了 <code>init-method</code> → <strong>可能永远不报错</strong>，只是行为不对；</li>
+    <li>全设对了、init 也配了 → 但 Spring 的 bean <strong>默认是单例</strong>，多线程并发访问，非 final 非 volatile 字段的可见性无保证；</li>
+    <li>只好把三个 bean 全标成 <code>scope="prototype"</code> —— 为了一个随意的设计选择，付出了一整套配置代价。</li>
+  </ol>
+  <p>构造器版本：</p>
+<pre><code>public class SafeObject {
+    private final Slippery slippery;
+    private final Shady shady;
+
+    @Inject
+    public SafeObject(Slippery slippery, Shady shady) {
+        this.slippery = slippery;
+        this.shady = shady;
+        <b>init();</b>                       <i>// 初始化在构造器末尾，private，无法被误调</i>
+    }
+    private void init() { ... }
+}</code></pre>
+  <p>上面五个问题<strong>全部消失</strong>。只有一个构造器 → 只有一种构造方式；字段 final → 安全发布；init 私有且在构造器内 → 不可能忘、不可能重复调。</p>
+
+  <h4>第 3 轮：可读性 —— setter 胜</h4>
+  <p>参数多且同类型时，构造器是灾难：</p>
+<pre><code>public Spy(String name1, String name2, String name3) { ... }
+
+new Spy("John Doe", "James Bond", "Don Joe");   <i>// 顺序错了也编译通过</i></code></pre>
+  <p>setter 版本一目了然：<code>spy.setBritishAlias("James Bond")</code>。<em>2026 年这一轮翻盘了</em>——见本章末的现代对照。</p>
+
+  <h4>第 4 轮：构造器金字塔 —— setter 胜</h4>
+  <p>同一个类在不同场景用不同的依赖子集（书里的例子是两栖动物：水里用鳃，陆上用肺）：</p>
+<pre><code>public Amphibian(Heart heart, Gills gills) { ... }   <i>// 水生</i>
+public Amphibian(Heart heart, Lungs lungs) { ... }   <i>// 陆生</i></code></pre>
+  <p>再多几个"剖面"，构造器就堆成金字塔了，而且它们无法用名字区分。但作者立刻补了一刀：</p>
+  <div class="box note">
+    <span class="tag">作者的态度</span>
+    <p>"需要一个对象有多个剖面的场景很罕见，多半只出现在遗留代码或密封的第三方代码里。<strong>如果你经常遇到构造器金字塔，你该先认真质疑自己的设计</strong>，而不是宣布 setter 注入是解药。"</p>
+  </div>
+
+  <h4>第 5 轮：循环引用 —— setter 胜（但有更好的办法）</h4>
+  <p><code>Host</code> 依赖 <code>Symbiote</code>，<code>Symbiote</code> 依赖 <code>Host</code>。两个都用构造器注入的话，先造谁都不行。三角、四角乃至任意长度的环也一样。</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 880 260" role="img" aria-label="循环依赖的三种处理：setter 注入打破环、代理打破环、Guice 自动插入动态代理" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    <marker id="a6c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A94A16"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+
+      <text x="16" y="20" font-size="10.5" fill="#8E2A26">问题</text>
+      <rect x="16" y="40" width="98" height="40" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.3"/>
+      <text x="65" y="65" text-anchor="middle" font-size="10.5">Host</text>
+      <rect x="16" y="130" width="98" height="40" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.3"/>
+      <text x="65" y="155" text-anchor="middle" font-size="10.5">Symbiote</text>
+      <path d="M50 82 L50 126" stroke="#8E2A26" stroke-width="1.2" fill="none"/>
+      <path d="M80 126 L80 84" stroke="#8E2A26" stroke-width="1.2" fill="none"/>
+      <polygon points="80,80 76,88 84,88" fill="#8E2A26"/>
+      <polygon points="50,130 46,122 54,122" fill="#8E2A26"/>
+      <text x="65" y="196" text-anchor="middle" font-size="9.5" fill="#8E2A26">先造谁都不行</text>
+
+      <line x1="150" y1="16" x2="150" y2="240" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="176" y="20" font-size="10.5">解法一 · setter 打破</text>
+      <rect x="176" y="40" width="98" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="225" y="65" text-anchor="middle" font-size="10.5">Host</text>
+      <rect x="176" y="130" width="98" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="225" y="155" text-anchor="middle" font-size="10.5">Symbiote</text>
+      <path d="M210 82 L210 126" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" fill="none"/>
+      <polygon points="210,130 206,122 214,122" fill="currentColor"/>
+      <path d="M240 126 L240 84" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" fill="none"/>
+      <polygon points="240,80 236,88 244,88" fill="currentColor"/>
+      <text x="225" y="196" text-anchor="middle" font-size="9.5" opacity=".7">先空壳后接线</text>
+      <text x="225" y="212" text-anchor="middle" font-size="9.5" fill="#8E2A26">代价：字段不能 final</text>
+
+      <line x1="310" y1="16" x2="310" y2="240" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="336" y="20" font-size="10.5">解法二 · 代理打破</text>
+      <rect x="336" y="40" width="104" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="388" y="65" text-anchor="middle" font-size="10.5">HostImpl</text>
+      <rect x="336" y="180" width="104" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="388" y="205" text-anchor="middle" font-size="10.5">SymbioteImpl</text>
+      <rect x="336" y="110" width="104" height="40" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="388" y="128" text-anchor="middle" font-size="10.5" fill="#A94A16">HostProxy</text>
+      <text x="388" y="142" text-anchor="middle" font-size="8.5" fill="#A94A16">setter 注入</text>
+      <path d="M360 82 L360 176" stroke="currentColor" stroke-width="1.2" fill="none"/>
+      <polygon points="360,180 356,172 364,172" fill="currentColor"/>
+      <text x="332" y="132" text-anchor="end" font-size="8.5" opacity=".7">①③ final</text>
+      <path d="M416 176 L416 154" stroke="currentColor" stroke-width="1.2" fill="none"/>
+      <polygon points="416,150 412,158 420,158" fill="currentColor"/>
+      <path d="M410 108 L400 86" stroke="#A94A16" stroke-width="1.2" stroke-dasharray="3 2" fill="none"/>
+      <polygon points="398,82 396,91 404,87" fill="#A94A16"/>
+      <text x="446" y="130" font-size="8.5" fill="#A94A16">④ 最后把</text>
+      <text x="446" y="143" font-size="8.5" fill="#A94A16">delegate 设上</text>
+      <text x="388" y="240" text-anchor="middle" font-size="9.5" opacity=".7">真实实现保住了 final</text>
+
+      <line x1="530" y1="16" x2="530" y2="240" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="556" y="20" font-size="10.5" fill="#0C6660">解法三 · 容器自动代理</text>
+      <rect x="556" y="60" width="104" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="608" y="85" text-anchor="middle" font-size="10.5">Host</text>
+      <rect x="700" y="60" width="104" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="752" y="85" text-anchor="middle" font-size="10.5">Symbiote</text>
+      <path d="M662 74 L696 74" stroke="currentColor" stroke-width="1.2" marker-end="url(#a6)" fill="none"/>
+      <path d="M696 92 L662 92" stroke="currentColor" stroke-width="1.2" marker-end="url(#a6)" fill="none"/>
+      <rect x="628" y="140" width="104" height="38" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4" stroke-dasharray="4 3"/>
+      <text x="680" y="164" text-anchor="middle" font-size="10" fill="#0C6660">动态代理</text>
+      <path d="M660 138 L636 104" stroke="#0C6660" stroke-width="1.1" stroke-dasharray="3 2" fill="none"/>
+      <path d="M700 138 L724 104" stroke="#0C6660" stroke-width="1.1" stroke-dasharray="3 2" fill="none"/>
+      <text x="680" y="200" text-anchor="middle" font-size="9.5" fill="#0C6660">Guice 自动插入，你什么都不用写</text>
+      <text x="680" y="222" text-anchor="middle" font-size="9" fill="#8E2A26">但 2026 年：Spring 默认直接拒绝循环依赖</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>三种解法，越往右代码越干净，但代价也越隐蔽。</b>解法二的四步构造顺序是：建 HostProxy → 用它建 SymbioteImpl → 用 SymbioteImpl 建 HostImpl → 最后把 HostImpl 塞回 HostProxy。绕这么大一圈，只为了让两个真实实现保住 <code>final</code> 字段。</figcaption>
+  </figure>
+
+  <h4>无解的那一种：in-construction 问题</h4>
+  <p>如果环里的对象在<strong>构造/初始化过程中就要调用对方</strong>：</p>
+<pre><code>public class SymbioteImpl implements Symbiote {
+    private final Host host;
+    private final int hostAge;
+
+    @Inject public SymbioteImpl(Host host) {
+        this.host = host;
+        <b>this.hostAge = host.calculateAge();</b>   <i>// 代理还没拿到 delegate → 炸</i>
+    }
+}</code></pre>
+  <p>改用 setter 注入，能救<strong>一半</strong>：只要只有一边在初始化时调对方就行。如果<strong>双方都在初始化时调对方</strong>——</p>
+  <div class="box trap">
+    <span class="tag">⚠ 无解</span>
+    <p>"构造器注入解决不了这个循环初始化的烂摊子。<strong>setter 注入同样解决不了。</strong>"</p>
+    <p>作者的出路是：这本来就不是接线问题，而是"把对象置于可用状态"的问题。<strong>用生命周期回调解决</strong>——先把所有对象接线完毕，再统一发一个"初始化"事件。见第 7 章。</p>
+    <p><em>今天就是 <code>@PostConstruct</code>：</em>Spring/Jakarta 保证它在<strong>全部依赖注入完成之后</strong>才调用，这正好是作者当年缺的那个钩子。</p>
+  </div>
+
+  <h4>结论</h4>
+  <div class="box note">
+    <span class="tag">作者的裁决</span>
+    <p>"字段可变性和 setter 注入对'意外的无效构造'的脆弱，代价太大，无法忽视。<strong>永远先试构造器注入，只在不得不的时候退回 setter 注入。</strong>"</p>
+  </div>
+
+  <h3><span class="sec">3.3</span>依赖来得太晚：三种部分注入模式</h3>
+  <p>有时候你在构造时拿不到全部依赖，或者依赖<strong>用一次就废了</strong>。奶奶吃苹果：</p>
+<pre><code>public class Granny {
+    private final Apple apple;
+    public Granny(Apple apple) { this.apple = apple; }
+
+    public void eat() {
+        apple.consume();
+        apple.consume();   <i>// 苹果已经吃掉了 → 出错</i>
+    }
+}</code></pre>
+  <p>长命的宿主（<code>Granny</code>）依赖短命的服务（<code>Apple</code>）。这类问题有三种解法，能力递增：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 880 300" role="img" aria-label="Provider、Assisted Provider、Builder 三种部分注入模式的能力对比" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+
+      <text x="16" y="20" font-size="10.5" fill="#A94A16">① Provider · 每次要一个新的</text>
+      <rect x="16" y="34" width="100" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="66" y="58" text-anchor="middle" font-size="10.5">Granny</text>
+      <line x1="118" y1="53" x2="164" y2="53" stroke="currentColor" stroke-width="1.2" marker-end="url(#a7)"/>
+      <text x="141" y="45" text-anchor="middle" font-size="8.5" opacity=".7">get()</text>
+      <rect x="168" y="34" width="118" height="38" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="227" y="58" text-anchor="middle" font-size="10.5" fill="#A94A16">Provider&lt;Apple&gt;</text>
+      <line x1="288" y1="53" x2="334" y2="53" stroke="currentColor" stroke-width="1.2" marker-end="url(#a7)"/>
+      <rect x="338" y="34" width="90" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="383" y="58" text-anchor="middle" font-size="10.5">Apple</text>
+      <text x="460" y="58" font-size="9.5" opacity=".7">无参数。只解决「用完就没了」</text>
+
+      <line x1="16" y1="94" x2="864" y2="94" stroke="currentColor" stroke-width="1" opacity=".22"/>
+
+      <text x="16" y="122" font-size="10.5" fill="#A94A16">② Assisted · 带上下文</text>
+      <rect x="16" y="136" width="100" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="66" y="160" text-anchor="middle" font-size="10">Manager</text>
+      <line x1="118" y1="155" x2="164" y2="155" stroke="currentColor" stroke-width="1.2" marker-end="url(#a7)"/>
+      <text x="141" y="147" text-anchor="middle" font-size="8.5" opacity=".7">get(ctx)</text>
+      <rect x="168" y="136" width="118" height="38" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="227" y="152" text-anchor="middle" font-size="10" fill="#A94A16">工厂接口</text>
+      <text x="227" y="167" text-anchor="middle" font-size="8.5" fill="#A94A16">容器生成实现</text>
+      <line x1="288" y1="155" x2="334" y2="155" stroke="currentColor" stroke-width="1.2" marker-end="url(#a7)"/>
+      <rect x="338" y="136" width="140" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="408" y="153" text-anchor="middle" font-size="10">Deliverer</text>
+      <text x="408" y="167" text-anchor="middle" font-size="8.5" opacity=".7">注入依赖 + 传入 letter</text>
+      <text x="500" y="160" font-size="9.5" opacity=".7">上下文对象一多，签名就爆炸</text>
+
+      <line x1="16" y1="196" x2="864" y2="196" stroke="currentColor" stroke-width="1" opacity=".22"/>
+
+      <text x="16" y="224" font-size="10.5" fill="#0C6660">③ Builder · 任意多上下文</text>
+      <rect x="16" y="238" width="100" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="66" y="262" text-anchor="middle" font-size="10">Manager</text>
+      <line x1="118" y1="257" x2="164" y2="257" stroke="currentColor" stroke-width="1.2" marker-end="url(#a7)"/>
+      <rect x="168" y="238" width="150" height="38" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="243" y="254" text-anchor="middle" font-size="10" fill="#0C6660">Builder（自身也被注入）</text>
+      <text x="243" y="268" text-anchor="middle" font-size="8.5" fill="#0C6660">.letter() .port() .build()</text>
+      <line x1="320" y1="257" x2="366" y2="257" stroke="currentColor" stroke-width="1.2" marker-end="url(#a7)"/>
+      <rect x="370" y="238" width="140" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="440" y="255" text-anchor="middle" font-size="10">Deliverer</text>
+      <text x="440" y="269" text-anchor="middle" font-size="8.5" opacity=".7">构造器注入，final ✓</text>
+      <text x="532" y="253" font-size="9.5" opacity=".7">还能隐藏实现选择（红苹果/青苹果）</text>
+      <text x="532" y="269" font-size="9.5" opacity=".7">和做参数校验</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>能力递增，复杂度也递增。</b>选择标准很简单：只需要"新实例"用 Provider；需要传<b>一个</b>运行时参数用 Assisted；需要传<b>多个</b>、或者要在中间做转换/校验/选实现，用 Builder。</figcaption>
+  </figure>
+
+  <h4>Provider</h4>
+<pre><code>public class Granny {
+    private final Provider&lt;Apple&gt; appleProvider;
+
+    @Inject public Granny(Provider&lt;Apple&gt; p) { this.appleProvider = p; }
+
+    public void eat() {
+        appleProvider.get().consume();     <i>// 每次 get() 一个新苹果</i>
+        appleProvider.get().consume();
+    }
+}</code></pre>
+  <p>作者强调 Provider 和服务定位器的两个区别：<strong>它是类型专属的</strong>（不用强转），<strong>它只有一个方法</strong>（<code>get()</code>，唯一职责是按作用域提供实例）。Guice 对所有绑定类型开箱提供 <code>Provider&lt;T&gt;</code>；Spring 那个年代要自己写一个实现 <code>BeanFactoryAware</code> 的类。</p>
+
+  <h4>Assisted Injection</h4>
+  <p>依赖需要一个只有在使用时才知道的<strong>上下文参数</strong>（比如"当前这期通讯稿"）：</p>
+<pre><code>public class Deliverer {
+    private final Newsletter letter;
+    private final MailServer server;          <i>// 这个由容器注入</i>
+
+    @Inject public Deliverer(<b>@Assisted</b> Newsletter letter, MailServer server) {
+        this.letter = letter;  this.server = server;
+    }
+}
+
+public interface DelivererFactory {           <i>// 只写接口，实现由容器生成</i>
+    Deliverer forLetter(Newsletter letter);
+}</code></pre>
+  <p>关键价值：<strong>既保住了构造器注入（final、有效性），又能传运行时参数。</strong>如果自己手写工厂 <code>return new Deliverer(letter)</code>，就退回了手工构造——失去病毒式注入、拦截、作用域。</p>
+
+  <h4>Builder</h4>
+  <p>上下文超过一个时，Assisted 的类型签名开始失控（<code>TwoAssistsProvider&lt;T,C1,C2&gt;</code>、<code>ThreeAssists…</code>）。Builder 用方法调用代替类型参数：</p>
+<pre><code>builder.letter(letter);
+builder.mailServerUrl("mail.wideplay.com");
+builder.port(21);
+Deliverer d = builder.buildDeliverer();</code></pre>
+  <p>Builder 自己也可以被注入依赖，从而在构建时做转换：</p>
+<pre><code>public Deliverer buildDeliverer() {
+    MailServer server = finder.findMailServer(mailServerUrl, port);   <i>// finder 是注入的</i>
+    return new Deliverer(letter, server);
+}</code></pre>
+  <p>Builder 还能<strong>隐藏实现选择</strong>——<code>builder.buildRedApple()</code> / <code>buildGreenApple()</code>，客户端只知道 <code>Apple</code>，永远看不到 <code>RedApple</code>/<code>GreenApple</code>。用 <code>Provider&lt;RedApple&gt;</code> 就做不到这一点，它把实现类型泄漏给了客户。</p>
+  <div class="box trap">
+    <span class="tag">⚠ Builder 要复用就必须重置</span>
+<pre><code>public Deliverer buildDeliverer() {
+    try {
+        return new Deliverer(letter, mailServerUrl, port);
+    } finally {
+        letter = null;  mailServerUrl = null;  port = -1;   <i>// 失败的构建不污染下一次</i>
+    }
+}</code></pre>
+    <p>更稳妥的做法：每次通过 Provider 拿一个新 Builder，杜绝复用和并发使用。</p>
+  </div>
+
+  <h3><span class="sec">3.4</span>密封代码：改不了源码怎么办</h3>
+  <p>第三方库以二进制形式提供，你没法加注解、没法重构。三种手段：</p>
+  <ol>
+    <li><strong>外部元数据</strong>。XML 配置天然不需要碰源码；Guice 也可以 <code>bind(Sealed.class).toConstructor(...)</code> 直接绑到某个构造器上。</li>
+    <li><strong>工厂方法</strong>。Spring 的 <code>factory-method="newInstance"</code> 能把静态工厂方法当构造器用。</li>
+    <li><strong>Adapter</strong>。最强的一招——继承它，在子类里做接线：</li>
+  </ol>
+<pre><code>public class SealedAdapter extends Sealed {
+    @Inject
+    public SealedAdapter(Dependency dep1, Dependency dep2, Dependency dep3) {
+        super(dep1);          <i>// 调用非 public（但非 private）的构造器</i>
+        dependOn(dep2);       <i>// 调用命名不合规范的 setter</i>
+        relyOn(dep3);
+    }
+}</code></pre>
+  <p>Adapter 的四个好处：基础设施逻辑被干净地封在 Adapter 里；拼写错误编译期就发现；<strong><code>Sealed</code> 的所有客户端一行都不用改</strong>；测试方式和原类一样。</p>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 循环依赖：Spring 直接翻脸了</h4>
+    <p>这是本章最大的变化。<strong>Spring Boot 2.6（2021）起，默认禁止循环引用</strong>，启动直接失败并打印依赖环。要恢复旧行为得显式开：</p>
+<pre><code>spring.main.allow-circular-references=true   <i># 别用。这是给你争取时间重构，不是许可</i></code></pre>
+    <p>换句话说：书里辛辛苦苦讲的"用代理打破循环"，业界最终的答案是<strong>不打破，直接禁止</strong>。原书自己其实已经埋了伏笔——它说循环引用"虽然罕见，却是构造器注入的严重缺陷"，而今天的共识是：<em>循环依赖是设计问题的症状，不是需要工具支持的正当需求。</em>常见的重构手法是抽出第三个组件、或者用事件/回调把一个方向的调用改成异步。</p>
+
+    <h4>② "参数太多且同类型"：语言层面解决了</h4>
+    <p>第 3 轮里 setter 注入赢的那一局，今天靠语言特性扳回来了：</p>
+<pre><code><i>// 2009：三个 String 分不清</i>
+new Spy("John Doe", "James Bond", "Don Joe");
+
+<i>// 2026 之一：值对象（record），类型本身携带含义</i>
+record RealName(String v) {}
+record BritishAlias(String v) {}
+new Spy(new RealName("John Doe"), new BritishAlias("James Bond"), ...);
+
+<i>// 2026 之二：Parameter Object —— 把一组参数打包，同时消灭构造器金字塔</i>
+record SpyIdentity(String realName, String britishAlias, String americanAlias) {}
+new Spy(identity, tradecraft);</code></pre>
+    <p><code>record</code>（Java 16 正式）自动生成全参构造器、<code>equals</code>、<code>hashCode</code>、访问器，字段天然 <code>final</code>。它基本上是"构造器注入 + 不可变"的语法糖。</p>
+
+    <h4>③ Provider 的现代形态</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>书中</th><th>今天</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>com.google.inject.Provider&lt;T&gt;</code></td><td><code>jakarta.inject.Provider&lt;T&gt;</code></td><td>已标准化；Guice 7 的 Provider 继承它</td></tr>
+        <tr><td>自己写 <code>BeanFactoryAware</code></td><td><code>ObjectProvider&lt;T&gt;</code></td><td>Spring 4.3+。还支持 <code>getIfAvailable()</code>、<code>stream()</code>、<code>orderedStream()</code></td></tr>
+        <tr><td>—</td><td><code>Supplier&lt;T&gt;</code></td><td>纯 JDK 接口，不绑定任何框架，测试里传 lambda 即可</td></tr>
+        <tr><td><code>&lt;lookup-method&gt;</code></td><td><code>@Lookup</code></td><td>还在，但基本被 <code>ObjectProvider</code> 取代</td></tr>
+      </tbody>
+    </table></div>
+
+    <h4>④ Assisted Injection 的现代形态</h4>
+<pre><code><i>// Guice 7：AssistedInject 扩展仍在，写法没变</i>
+install(new FactoryModuleBuilder().build(DelivererFactory.class));
+
+<i>// Dagger 2：把它做成了一等公民</i>
+class Deliverer {
+    @AssistedInject Deliverer(@Assisted Newsletter letter, MailServer server) { ... }
+    @AssistedFactory interface Factory { Deliverer create(Newsletter letter); }
+}
+
+<i>// Spring：没有等价扩展，通行做法是「函数式工厂 bean」</i>
+@Bean
+Function&lt;Newsletter, Deliverer&gt; delivererFactory(MailServer server) {
+    return letter -&gt; new Deliverer(letter, server);
+}
+<i>// 或者 ObjectProvider.getObject(args) 配合 prototype 作用域</i></code></pre>
+
+    <h4>⑤ Builder：交给工具</h4>
+    <p>手写 Builder 今天很少了。Lombok 的 <code>@Builder</code>、或 record + 静态工厂方法就够了。作者关于"Builder 能隐藏实现选择"的洞见仍然成立，只是它现在通常长成一个<strong>静态工厂方法</strong>：<code>Apple.red()</code> / <code>Apple.green()</code>。</p>
+
+    <h4>⑥ 密封代码：Adapter 依然是正解</h4>
+    <p>手法没变，名字变了。今天你在 Spring 里为第三方库写的每一个 <code>@Bean</code> 方法——</p>
+<pre><code>@Bean
+ThirdPartyClient client(@Value("${api.url}") String url, ObjectMapper mapper) {
+    ThirdPartyClient c = ThirdPartyClient.newInstance();   <i>// 静态工厂</i>
+    c.configureWith(url);                                  <i>// 命名不规范的 setter</i>
+    return c;
+}</code></pre>
+    <p>——就是原书说的"外部元数据 + Adapter"的合体。Spring Boot 的整套 <code>*AutoConfiguration</code> 本质上就是官方替你写好的、面向全生态的密封代码适配层。</p>
+
+    <h4>⑦ 顺带一提：<code>final</code> 的地位更重要了</h4>
+    <p>作者当年论证 <code>final</code> 是为了不可变性和安全发布。今天多了一条：<strong>虚拟线程</strong>（Java 21+）让"随手开线程"变成常态，共享的可变状态被并发触碰的概率大幅上升。<code>final</code> + 构造器注入的价值只增不减。</p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c3/</code>（<code>SpellChecker</code>、<code>G</code>、<code>H</code>）与 <code>prasanna/src/example/</code>：<code>Host</code>/<code>Symbiote</code>/<code>HostProxy</code>（循环引用）、<code>Granny</code>/<code>Apple</code>/<code>AppleProvider</code>/<code>AppleBuilder</code>（重注入）、<code>Deliverer</code>/<code>DelivererFactory</code>/<code>DelivererProvider</code>/<code>DelivererBuilder</code>（上下文注入）、<code>SafeObject</code>/<code>UnsafeObject</code>（对象有效性）；<code>prasanna/src/sealed/</code>（密封代码）；<code>prasanna/src/equipment/</code> + <code>stereo.xml</code>（setter 注入的 Amplifier）。</p>
+  </div>
+
+  <div class="pager"><a href="ch02.html"><span>上一章</span>02 · 动手：注入器与键</a><a class="next" href="ch04.html"><span>下一章</span>04 · 模块化与可测试性</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

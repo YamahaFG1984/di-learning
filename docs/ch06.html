@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自定义作用域与陷阱 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a class="on" aria-current="page" href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch6">
+  <p class="eyebrow">第 6 章</p>
+  <h2 class="title">自定义作用域与陷阱</h2>
+  <p class="lede">上一章讲了容器给你的作用域，这一章你自己造一个——以及为此付出的代价。<strong>作用域是全书威力最大也最危险的特性</strong>：它把状态管理反转给了容器，而当两个不同寿命的对象被接在一起时，事故会以内存泄漏、线程可见性错乱、静默的错误结果这三种面目出现，且单元测试一个都抓不到。</p>
+  <ul class="chips">
+    <li>自定义作用域三问</li>
+    <li>事务作用域</li>
+    <li>Scope 接口</li>
+    <li>scope-widening</li>
+    <li>out-of-scope 对象</li>
+    <li>内存泄漏</li>
+    <li>缓存 / 网格作用域</li>
+  </ul>
+
+  <h3><span class="sec">6.1</span>动手造一个事务作用域</h3>
+  <p>动手之前先回答三个问题。作者把它们放在最前面，是有道理的——第二个问题几乎是所有自定义作用域事故的根源：</p>
+  <ol>
+    <li>这个作用域代表的<strong>上下文是否定义清晰</strong>？（起点在哪、终点在哪）</li>
+    <li>对象必须活满整个作用域——<strong>对该作用域里的每一个键都成立吗</strong>？<em>绝不能在一个作用域里出现两种寿命。</em></li>
+    <li>会不会有多个线程访问这个作用域里的对象？</li>
+  </ol>
+  <p>事务（ACID：原子、一致、隔离、持久）恰好三条全过：起止明确（<code>begin</code>/<code>commit</code>），寿命一致，且通常限定在单线程内。</p>
+
+  <h4>为什么需要它：核电站的例子</h4>
+<pre><code>public class PowerStation {
+    public void start() {
+        transaction.begin();
+        boolean failed = false;
+        try {
+            chamber1.fire();  chamber2.fire();  chamber3.fire();
+        } catch (StartFailedException e) {
+            failed = true;
+        } finally {
+            if (failed) transaction.rollback(); else transaction.commit();
+        }
+    }
+}</code></pre>
+<pre><code>public class Chamber {
+    private final Gauge gauge;
+    public void fire() {
+        gauge.measure();
+        if (gauge.temperature() &gt; 100) throw new StartFailedException();
+    }
+}</code></pre>
+  <p>需求是<strong>三个燃烧室的温度之和</strong>不能超过 100。现在 <code>Gauge</code> 是无作用域的，每个 <code>Chamber</code> 各有一个仪表，量的是各自的温度——需求实现不了。</p>
+  <p>那设成单例？也不对——那样连备用燃烧室、连根本不是燃烧室的组件都会共享这个仪表。<strong>正确的上下文是"这一次启动"，也就是这个事务。</strong>于是：</p>
+<pre><code><b>@TransactionScoped</b>
+public class Gauge { ... }</code></pre>
+  <p><code>PowerStation</code>、<code>Chamber</code> 和它们的方法<strong>一行都不用改</strong>。这就是作用域的威力：换一个词，语义全变，业务代码毫不知情。</p>
+
+  <h4>Scope 接口只有一个方法</h4>
+<pre><code>public interface Scope {
+    &lt;T&gt; Provider&lt;T&gt; scope(Key&lt;T&gt; key, Provider&lt;T&gt; <b>unscoped</b>);
+}</code></pre>
+  <p>两个参数的含义是理解自定义作用域的钥匙：<code>key</code> 是要被作用域化的键；<code>unscoped</code> 是一个"无作用域的 provider"——<strong>当上下文里还没有这个实例时，用它造一个新的</strong>。</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 840 260" role="img" aria-label="自定义作用域的工作原理：注入器向作用域 provider 索取实例，命中缓存则返回，未命中则调用无作用域 provider 新建并缓存" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    <marker id="b1c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A94A16"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+
+      <rect x="16" y="96" width="104" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="68" y="122" text-anchor="middle" font-size="10.5">依赖方</text>
+      <line x1="122" y1="117" x2="164" y2="117" stroke="currentColor" stroke-width="1.2" marker-end="url(#b1)"/>
+
+      <rect x="168" y="96" width="104" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="220" y="122" text-anchor="middle" font-size="10.5">Injector</text>
+      <line x1="274" y1="117" x2="316" y2="117" stroke="currentColor" stroke-width="1.2" marker-end="url(#b1)"/>
+
+      <rect x="320" y="86" width="150" height="62" rx="3" fill="none" stroke="#A94A16" stroke-width="1.5"/>
+      <text x="395" y="108" text-anchor="middle" font-size="10.5" fill="#A94A16">作用域 Provider</text>
+      <text x="395" y="124" text-anchor="middle" font-size="8.5" fill="#A94A16">查 ThreadLocal 缓存</text>
+      <text x="395" y="139" text-anchor="middle" font-size="8.5" fill="#A94A16">没有就新建并存入</text>
+
+      <path d="M395 84 L395 56 L300 56" stroke="#0C6660" stroke-width="1.2" fill="none" marker-end="url(#b1)"/>
+      <text x="348" y="48" text-anchor="middle" font-size="9" fill="#0C6660">命中：直接返回缓存</text>
+
+      <line x1="472" y1="117" x2="514" y2="117" stroke="currentColor" stroke-width="1.2" marker-end="url(#b1)"/>
+      <text x="493" y="109" text-anchor="middle" font-size="8.5" opacity=".65">未命中</text>
+      <rect x="518" y="96" width="150" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="593" y="114" text-anchor="middle" font-size="10">无作用域 Provider</text>
+      <text x="593" y="129" text-anchor="middle" font-size="8.5" opacity=".65">容器内建，永远 new</text>
+      <line x1="670" y1="117" x2="712" y2="117" stroke="currentColor" stroke-width="1.2" marker-end="url(#b1)"/>
+      <rect x="716" y="96" width="104" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="768" y="122" text-anchor="middle" font-size="10.5">新实例</text>
+
+      <line x1="16" y1="184" x2="824" y2="184" stroke="currentColor" stroke-width="1" opacity=".25"/>
+      <text x="16" y="206" font-size="10" opacity=".6">上下文的开关由框架代码调用，不是注入器</text>
+      <rect x="180" y="216" width="150" height="30" rx="3" fill="none" stroke="#0C6660" stroke-width="1.2"/>
+      <text x="255" y="236" text-anchor="middle" font-size="10" fill="#0C6660">beginScope()</text>
+      <text x="345" y="236" font-size="9.5" opacity=".7">新建一张空的缓存表</text>
+      <rect x="500" y="216" width="150" height="30" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.2"/>
+      <text x="575" y="236" text-anchor="middle" font-size="10" fill="#8E2A26">endScope()</text>
+      <text x="665" y="236" font-size="9.5" opacity=".7">整张表丢弃</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>作用域本质上就是一层带生命周期的缓存。</b><code>beginScope</code> 建表、<code>endScope</code> 拆表，中间所有对同一个键的请求都命中同一个实例。上下文越界的所有事故，根源都在于<b>某个引用在拆表之后还活着</b>。</figcaption>
+  </figure>
+
+  <h4>Guice 实现</h4>
+<pre><code>public class TransactionScope implements Scope {
+    private final ThreadLocal&lt;Map&lt;Key&lt;?&gt;, Object&gt;&gt; instances = new ThreadLocal&lt;&gt;();
+
+    public &lt;T&gt; Provider&lt;T&gt; scope(final Key&lt;T&gt; key, final Provider&lt;T&gt; unscoped) {
+        return new Provider&lt;T&gt;() {
+            public T get() {
+                Map&lt;Key&lt;?&gt;, Object&gt; map = instances.get();
+                <b>if (null == map)
+                    throw new OutOfScopeException("no transaction was active");</b>
+                if (!map.containsKey(key)) map.put(key, unscoped.get());
+                return (T) map.get(key);
+            }
+        };
+    }
+
+    public void beginScope() { instances.set(new HashMap&lt;&gt;()); }
+    public void endScope()   { instances.remove(); }
+}</code></pre>
+  <p>那个加粗的检查非常重要。<strong>在事务之外请求事务作用域的对象，说明程序逻辑或配置有错。</strong>如果不检查，你会得到一个空指针或者更糟的静默错误，然后花几小时在错误的地方找 bug。</p>
+  <p>注册：</p>
+<pre><code>bindScope(TransactionScoped.class, new TransactionScope());
+
+@Retention(RetentionPolicy.RUNTIME)
+<b>@ScopeAnnotation</b>                       <i>// 元注解：告诉容器这是个作用域注解</i>
+public @interface TransactionScoped { }</code></pre>
+
+  <h4>Spring 实现</h4>
+  <p>接口多三个方法，但核心的 <code>get()</code> 和 Guice 的 <code>scope()</code> 语义一致：</p>
+<pre><code>public interface Scope {
+    Object get(String key, ObjectFactory unscopedProvider);  <i>// 等价于 Guice 的 scope()+get()</i>
+    Object remove(String key);                               <i>// 从当前上下文剔除一个键</i>
+    String getConversationId();                              <i>// 当前上下文的唯一标识</i>
+    void registerDestructionCallback(String key, Runnable cb); <i>// 出作用域时的清理钩子（第 7 章）</i>
+}</code></pre>
+<pre><code>&lt;bean class="org.springframework.beans.factory.config.CustomScopeConfigurer"&gt;
+    &lt;property name="scopes"&gt;&lt;map&gt;
+        &lt;entry key="transaction"&gt;&lt;bean class="my.custom.TransactionScope"/&gt;&lt;/entry&gt;
+    &lt;/map&gt;&lt;/property&gt;
+&lt;/bean&gt;
+
+&lt;bean id="gauge" class="nuclear.Gauge" <b>scope="transaction"</b>/&gt;</code></pre>
+
+  <h3><span class="sec">6.2</span>陷阱一：单例必须线程安全</h3>
+  <div class="box trap">
+    <span class="tag">⚠ 没有例外</span>
+    <p>"Singletons absolutely must be thread-safe — <strong>no exceptions</strong>."</p>
+  </div>
+  <p>两条路。<strong>首选不可变</strong>：</p>
+<pre><code>@Immutable @Singleton
+public class MySafeObject {
+    private final Dependency dep1;
+    private final Dependency dep2;
+    @Inject public MySafeObject(Dependency d1, Dependency d2) { ... }
+    <i>// 没有 setter，没有能改变依赖状态的方法</i>
+}</code></pre>
+  <p>做不到不可变时（比如为了破循环引用而用了 setter），退而求其次用 <code>volatile</code>：</p>
+  <div class="split">
+    <div class="good"><h5>安全</h5>
+<pre><code>@ThreadSafe @Singleton
+public class MySafeObject2 {
+    private <b>volatile</b> Dependency dep1;
+    private <b>volatile</b> Dependency dep2;
+
+    @Inject public void set(Dependency d1, Dependency d2) {
+        this.dep1 = d1; this.dep2 = d2;
+    }
+}</code></pre>
+    </div>
+    <div class="bad"><h5>致命</h5>
+<pre><code>@NotThreadSafe @Singleton
+public class MyUnsafeObject {
+    private Dependency dep1;      <i>// 非 final 非 volatile</i>
+    private Dependency dep2;
+
+    @Inject public void set(Dependency d1, Dependency d2) {
+        this.dep1 = d1; this.dep2 = d2;
+    }
+}</code></pre>
+    </div>
+  </div>
+  <p>右边为什么致命：<strong>Java 语言对非 <code>final</code>、非 <code>volatile</code> 字段在线程间的可见性不做任何保证。</strong>设置它的那个线程能看到值，别的线程可能永远看不到。JVM 允许每个线程持有本地缓存副本。第 9 章会详细展开。</p>
+  <p>作者对线程安全的态度值得抄下来："<strong>不存在能判定一个类完全线程安全的试金石。</strong>仔细推理它的线程环境；探索常见和非典型的使用场景；试着说服至少一个别人；主动寻找缺陷，永远不要假设它们不存在；验证你的每一个假设。测试，测试，再测试。"</p>
+
+  <h3><span class="sec">6.3</span>陷阱二：作用域越界注入（scope-widening）</h3>
+  <p>本章的核心。<strong>把窄作用域的对象注入进宽作用域的对象</strong>，被注入的那个就脱离了自己作用域的管辖——上下文结束了，它还活着。</p>
+  <p>作者特别提醒：<strong>越界不限于"窄 vs 宽"，同一个作用域的两个不同上下文之间也算</strong>（比如两个用户会话被一个单例桥接起来）。</p>
+
+  <h4>事故 A：静默的错误结果</h4>
+<pre><code>@Singleton
+public class TextReader {
+    private final WordCounter counter;     <i>// WordCounter 是无作用域的</i>
+
+    public void scan(List&lt;String&gt; strings) {
+        for (String s : strings) counter.count(s);
+        System.out.println("Total words: " + counter.words());
+    }
+}</code></pre>
+  <p>每次调用都传 7 个词，期望每次都打印 7。实际输出：</p>
+<pre><code>Total words: 7
+Total words: <b>14</b>
+Total words: <b>21</b></code></pre>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 250" role="img" aria-label="单例 TextReader 持有无作用域的 WordCounter，导致三次调用共享同一个计数器并累加；改为注入 Provider 后每次得到新计数器" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5" fill="#8E2A26">出错的接线</text>
+      <rect x="16" y="80" width="120" height="46" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4"/>
+      <text x="76" y="100" text-anchor="middle" font-size="10">TextReader</text>
+      <text x="76" y="115" text-anchor="middle" font-size="8.5" fill="#8E2A26">@Singleton</text>
+
+      <line x1="138" y1="103" x2="188" y2="103" stroke="#8E2A26" stroke-width="1.4" marker-end="url(#b2)"/>
+      <text x="163" y="95" text-anchor="middle" font-size="8.5" fill="#8E2A26">攥着不放</text>
+
+      <rect x="192" y="80" width="120" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="252" y="100" text-anchor="middle" font-size="10">WordCounter</text>
+      <text x="252" y="115" text-anchor="middle" font-size="8.5" opacity=".65">no scope（本该每次新建）</text>
+
+      <line x1="52" y1="52" x2="52" y2="76" stroke="currentColor" stroke-width="1.1" marker-end="url(#b2)"/>
+      <text x="52" y="44" text-anchor="middle" font-size="9">scan① scan② scan③</text>
+
+      <text x="330" y="90" font-size="9.5" fill="#8E2A26">三次调用共享同一个计数器</text>
+      <text x="330" y="106" font-size="9.5" fill="#8E2A26">7 → 14 → 21</text>
+      <text x="330" y="126" font-size="9.5" opacity=".7">两个类各自的单元测试都会通过</text>
+
+      <line x1="16" y1="158" x2="784" y2="158" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="16" y="180" font-size="10.5" fill="#0C6660">修好的接线</text>
+      <rect x="16" y="196" width="120" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="76" y="214" text-anchor="middle" font-size="10">TextReader</text>
+      <text x="76" y="229" text-anchor="middle" font-size="8.5" opacity=".65">@Singleton</text>
+      <line x1="138" y1="217" x2="188" y2="217" stroke="#0C6660" stroke-width="1.3" marker-end="url(#b2)"/>
+      <rect x="192" y="196" width="150" height="42" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="267" y="214" text-anchor="middle" font-size="10" fill="#0C6660">Provider&lt;WordCounter&gt;</text>
+      <text x="267" y="229" text-anchor="middle" font-size="8.5" fill="#0C6660">每次 get() 问容器要</text>
+      <line x1="344" y1="203" x2="392" y2="192" stroke="currentColor" stroke-width="1.1" marker-end="url(#b2)"/>
+      <line x1="344" y1="217" x2="392" y2="217" stroke="currentColor" stroke-width="1.1" marker-end="url(#b2)"/>
+      <line x1="344" y1="231" x2="392" y2="242" stroke="currentColor" stroke-width="1.1" marker-end="url(#b2)"/>
+      <text x="400" y="196" font-size="9.5">counter①</text>
+      <text x="400" y="221" font-size="9.5">counter②</text>
+      <text x="400" y="246" font-size="9.5">counter③</text>
+      <text x="500" y="221" font-size="9.5" fill="#0C6660">7 → 7 → 7</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>单元测试为什么抓不到。</b><code>WordCounter</code> 的测试会通过——它确实正确地数了词。<code>TextReader</code> 的测试也会通过——mock 会断言"调用方式正确"，而不会断言"实例是新的"。<b>这个 bug 只存在于两个正确的类被接在一起的方式里。</b></figcaption>
+  </figure>
+
+  <p>两种修法：</p>
+  <ul>
+    <li><strong>降低宽的那个的作用域</strong>——把 <code>TextReader</code> 也改成无作用域。最简单，但不总是可行。</li>
+    <li><strong>注入 <code>Provider</code></strong>——第 3 章的重注入模式，本质上 scope-widening 就是重注入问题的一种形态。</li>
+  </ul>
+  <div class="box trap">
+    <span class="tag">⚠ 用了 Provider 也可能出错</span>
+<pre><code>public void scan(List&lt;String&gt; strings) {
+    for (String s : strings) counterProvider.get().count(s);       <i>// 每个词一个新计数器</i>
+    System.out.println("Total: " + counterProvider.get().words()); <i>// 又一个新的 → 永远打印 0</i>
+}</code></pre>
+    <p>正确写法是<strong>每个方法调用取一次</strong>：<code>WordCounter counter = counterProvider.get();</code> 然后复用它。作者说得很实在：这种错误"多半会让你满世界找 bug，就是不会想到作用域上"。</p>
+  </div>
+
+  <h4>事故 B：out-of-scope 对象</h4>
+  <p>把 servlet 标成请求作用域：</p>
+<pre><code>@RequestScoped
+public class HelloServlet extends HttpServlet {
+    public void init(ServletConfig config) { ... }    <i>// 容器启动时调用</i>
+}</code></pre>
+  <p>Web 应用启动时 <code>init()</code> 被触发，<strong>此时没有任何活动请求</strong> → <code>OutOfScopeException</code> → 整个应用起不来。会话作用域同理。</p>
+  <p>解法是第 3 章的 Adapter：用一个<strong>单例</strong>包住它，把"生命周期方法"留在单例里，把"请求内的方法"委托下去：</p>
+<pre><code>@Singleton
+public class HelloServletAdapter extends HttpServlet {
+    private final Provider&lt;HelloServlet&gt; delegate;
+
+    public void init(ServletConfig config) { <i>/* 初始化逻辑留在这一层 */</i> }
+
+    public void service(HttpServletRequest req, HttpServletResponse res) {
+        delegate.get().service(req, res);    <i>// 这里一定在请求内，安全</i>
+    }
+}</code></pre>
+
+  <h4>事故 C：线程安全</h4>
+  <p>单例的窄作用域依赖，会被单例的所有调用线程碰到。</p>
+<pre><code>@Singleton
+public class TextPrinter {
+    private final Counter counter;                <i>// @NotThreadSafe</i>
+
+    public void print(String text) {
+        System.out.println(text);
+        counter.increment();
+        if (counter.getCount() == 100) System.out.println("done!");
+    }
+}</code></pre>
+  <p>问题分两层。第一层是可见性：<code>count</code> 非 volatile，各线程看到的值不一致。加了 <code>volatile</code> 之后还有第二层——<strong>两个线程可能一个把计数推到 100、另一个推到 101，然后两个都跳过了 <code>== 100</code> 的判断，"done!" 永远不打印。</strong></p>
+  <p>解法是互斥：</p>
+<pre><code>@ThreadSafe @Singleton
+public class TextPrinter {
+    public <b>synchronized</b> void print(String text) { ... }   <i>// 由持有者负责加锁</i>
+}</code></pre>
+  <p>注意 <code>Counter</code> 本身<strong>仍然标注 <code>@NotThreadSafe</code></strong>——因为它作为一个组件依然可以被不安全地使用。<em>责任在持有它的单例身上。</em></p>
+
+  <h4>事故 D：内存泄漏</h4>
+<pre><code>@Singleton
+public class BadServlet extends HttpServlet {
+    public final List&lt;WebPage&gt; pages = new ArrayList&lt;&gt;();     <i>// 单例持有，永不释放</i>
+
+    public void service(HttpServletRequest req, HttpServletResponse res) {
+        <b>pages.add(page.get());</b>                              <i>// 每个请求攒一个</i>
+        pages.get(0).handle(req, res);
+    }
+}</code></pre>
+  <p>单例活到应用关闭，所以它引用的一切都活到应用关闭。不停刷新这个 URL，最终 <code>OutOfMemoryError</code>。改法很简单——<strong>用完就丢</strong>：</p>
+<pre><code>public void service(HttpServletRequest req, HttpServletResponse res) {
+    page.get().handle(req, res);     <i>// 不保存引用，GC 可以回收</i>
+}</code></pre>
+
+  <div class="box trap">
+    <span class="tag">⚠ 四类事故的共同点</span>
+    <p>它们<strong>全都测不出来</strong>。单元测试测不出（每个类都是对的），集成测试也不可靠（并发和内存问题需要特定负载才显形）。作者给出的唯一防线是设计纪律：</p>
+    <ul>
+      <li>让整个对象图<strong>绑在最窄的作用域</strong>上；</li>
+      <li>必须跨作用域时，<strong>用 Provider 或 Adapter</strong>；</li>
+      <li>想清楚并说服另一个人；</li>
+      <li>能避免就彻底避免。</li>
+    </ul>
+  </div>
+
+  <h3><span class="sec">6.4</span>把作用域用出花来</h3>
+  <p>最后一节是前瞻性的，2009 年只能算构想，今天已经全部落地：</p>
+  <ul>
+    <li><strong>缓存作用域</strong>：实例透明地从缓存（甚至磁盘缓存）中获取，可以跨越注入器的多次生命周期。作者举的例子是游戏存档。</li>
+    <li><strong>网格作用域</strong>：实例活在一个跨机器的分布式缓存里（书里点名 Oracle Coherence）。一台机器上注入的对象，整个集群都能拿到。作者说最简单的用例是<strong>把用户凭证复制到整个集群</strong>，从而实现单点登录。</li>
+    <li><strong>透明网格计算</strong>：把一次方法调用编排到多台机器上（书里对比了 Apache Hadoop 的 MapReduce）。作者当时的判断是"已有的努力都集中在任务切分与分发上，缺的是<em>面向客户端的架构模式</em>"。</li>
+  </ul>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 手写 <code>ThreadLocal</code> 作用域：换成 <code>ScopedValue</code></h4>
+    <p>6.1 节那份 <code>TransactionScope</code> 的核心是 <code>ThreadLocal&lt;Map&gt;</code> + 手动 <code>begin</code>/<code>end</code>。它有两个已知弱点：忘了 <code>endScope()</code> 就在线程池里泄漏；子线程看不到上下文。Java 25 的 <code>ScopedValue</code>（JEP 506）两个都解决了：</p>
+<pre><code><i>// 上下文的边界由代码块决定，不可能忘记关</i>
+static final ScopedValue&lt;Map&lt;Key&lt;?&gt;, Object&gt;&gt; TXN = ScopedValue.newInstance();
+
+ScopedValue.where(TXN, new HashMap&lt;&gt;()).run(() -&gt; {
+    txn.begin();
+    try { chamber1.fire(); chamber2.fire(); chamber3.fire(); txn.commit(); }
+    catch (StartFailedException e) { txn.rollback(); }
+});   <i>// ← 出了这个块，上下文自动消失，没有 remove() 可以忘</i></code></pre>
+    <p>作用域实现里的 <code>if (null == map) throw new OutOfScopeException(...)</code> 依然要写——只是改成检查 <code>TXN.isBound()</code>。<em>作者当年为"作用域外访问"设的那道防线，今天一个字都不用改。</em></p>
+
+    <h4>② 事务作用域本身：早就不用自己写了</h4>
+    <p>核电站那个例子在 2009 年需要自定义作用域，因为当时的 <code>@Transactional</code> 生态还不完善。今天：</p>
+<pre><code>@Service
+class PowerStation {
+    @Transactional                          <i>// Spring / Jakarta 都有</i>
+    public void start() {
+        chamber1.fire(); chamber2.fire(); chamber3.fire();
+        <i>// 抛异常 = 自动回滚，不用写 try/finally</i>
+    }
+}</code></pre>
+    <p>而"三个燃烧室共享一个仪表"这类需求，今天的标准解法是<strong>把 <code>Gauge</code> 当参数显式传下去</strong>，或者用 <code>TransactionSynchronizationManager.getResource()</code> 这种官方的事务级资源绑定——<em>不再鼓励为它造一个新的作用域</em>。原因见下一条。</p>
+
+    <h4>③ 自定义作用域的行业态度：变保守了</h4>
+    <p>作者当年鼓励"按你的问题域设计作用域"。十七年过去，业界的共识明显收紧：</p>
+    <ul>
+      <li>Spring 的自定义 <code>Scope</code> 接口一直都在，但生产项目里罕见；</li>
+      <li>Guice 官方 wiki 现在直接建议：<em>"custom scopes are rarely needed"</em>，优先考虑显式传参；</li>
+      <li>原因正是 6.3 节列的四类事故——<strong>自定义作用域的收益是省几行代码，代价是引入一整类测不出来的 bug</strong>。这个交易在大多数项目里不划算。</li>
+    </ul>
+    <p>换句话说：<em>这一章最有价值的部分不是 6.1（怎么造），而是 6.3（为什么最好别造）。</em></p>
+
+    <h4>④ Scope-widening：容器开始帮你挡了</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>手段</th><th>做什么</th></tr></thead>
+      <tbody>
+        <tr><td>Spring 作用域代理<br><code>ScopedProxyMode.TARGET_CLASS</code></td><td>注入的是代理，每次方法调用时才解析真实实例 → 从<strong>机制上</strong>杜绝了单例攥住请求对象</td></tr>
+        <tr><td>Spring <code>ObjectProvider</code></td><td>书里 <code>Provider</code> 的加强版，还能 <code>getIfAvailable()</code></td></tr>
+        <tr><td>Guice 内建检查</td><td>把 <code>@RequestScoped</code> 注入 <code>@Singleton</code> 时，运行时抛 <code>OutOfScopeException</code>（书里的场景）</td></tr>
+        <tr><td>Simple Injector（.NET）</td><td>直接把这类问题命名为 <em>Captive Dependency</em>，并在 <code>container.Verify()</code> 时<strong>启动期报错</strong>——这是目前最彻底的方案</td></tr>
+      </tbody>
+    </table></div>
+    <p>Java 侧至今没有等价的启动期全图校验，所以本章的纪律依然要靠人。</p>
+
+    <h4>⑤ 内存泄漏：工具追上来了</h4>
+    <p><code>BadServlet</code> 那类泄漏今天用 <strong>JFR（Java Flight Recorder）+ 堆转储分析</strong>能在几分钟内定位到"谁持有了这个引用"。生产环境有 <code>-XX:+HeapDumpOnOutOfMemoryError</code> 兜底。但注意：<strong>工具只能事后诊断，防不住</strong>。</p>
+
+    <h4>⑥ 缓存 / 网格作用域：全部成真了</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>2009 年的构想</th><th>2026 年的现成方案</th></tr></thead>
+      <tbody>
+        <tr><td>缓存作用域</td><td>Spring Cache 抽象（<code>@Cacheable</code>）+ Caffeine / Redis</td></tr>
+        <tr><td>网格作用域 · 会话复制</td><td><strong>Spring Session</strong>（Redis / Hazelcast / JDBC 后端）—— 几乎精确实现了作者说的"跨集群共享会话作用域实例"</td></tr>
+        <tr><td>单点登录</td><td>OIDC / OAuth2 + 无状态 JWT，或 Spring Session 共享；<strong>方向变了</strong>：主流做法是<em>不要有服务端会话状态</em></td></tr>
+        <tr><td>透明网格计算</td><td>Hadoop → Spark / Flink；"面向客户端的架构模式"这个空白，最终由 <strong>gRPC / 服务网格 / Actor 模型</strong>填上，而不是由 DI 容器填上</td></tr>
+      </tbody>
+    </table></div>
+    <p>最后一条值得注意：作者希望 DI 容器把远程调用做成透明的注入。历史给的答案是<strong>否</strong>——分布式的失败模式（网络分区、超时、部分失败）不该被透明地隐藏起来。这是"透明远程调用"这个想法在业界的第二次失败（第一次是 EJB Remote / CORBA）。</p>
+
+    <h4>⑦ 线程安全注解</h4>
+    <p>书里用的 <code>@Immutable</code> / <code>@ThreadSafe</code> / <code>@GuardedBy</code> 来自 <em>Java Concurrency in Practice</em>（jcip-annotations，仓库里就有这个 jar）。它们今天基本没人用了——但<strong>这个习惯本身值得保留</strong>，只是换成了：Error Prone 的 <code>@Immutable</code>（编译期<em>强制检查</em>，不只是文档）、JSpecify 的空安全注解（Spring 7 全面采用）、以及最好的一招——<strong>用 <code>record</code> 让不可变成为类型的性质而不是注释</strong>。</p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c6/</code> —— <code>TransactionScope</code>（Spring 版实现，仓库里那份就是清单 6.4）、<code>TransactionScoped</code>、<code>TransactionModule</code>、<code>PowerStation</code>/<code>Chamber</code>/<code>Gauge</code>、<code>MySafeObject</code>/<code>MySafeObject2</code>/<code>MyUnsafeObject</code>、<code>TextReader</code>/<code>WordCounter</code>、<code>TextPrinter</code>/<code>Counter</code>、<code>BadServlet</code>/<code>GoodServlet</code>、<code>HelloServlet</code>/<code>HelloServletAdapter</code>。</p>
+  </div>
+
+  <div class="pager"><a href="ch05.html"><span>上一章</span>05 · 作用域：状态的容器</a><a class="next" href="ch07.html"><span>下一章</span>07 · 对象生命周期</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

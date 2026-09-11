@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模块化与可测试性 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a class="on" aria-current="page" href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch4">
+  <p class="eyebrow">第 4 章</p>
+  <h2 class="title">模块化与可测试性</h2>
+  <p class="lede">前三章都在讲"一个对象怎么拿到依赖"。这一章往上抬一层：<strong>一堆对象怎么组织成能独立开发、独立替换、独立测试的模块。</strong>核心命题只有一个——紧耦合让代码不可测，而不可测的代码等于没写完。</p>
+  <ul class="chips">
+    <li>模块的四个性质</li>
+    <li>横切 / 纵切</li>
+    <li>紧耦合的重构代价</li>
+    <li>面向契约编程</li>
+    <li>out-of-container 测试</li>
+    <li>集成测试</li>
+    <li>动态重绑定</li>
+  </ul>
+
+  <h3><span class="sec">4.1</span>模块是什么</h3>
+  <p>对象是程序的构件；一组承担共同职责的对象叫<em>模块</em>。作者给了四条判据，今天读起来像是微服务和 Spring Modulith 的预告：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th>性质</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td><strong>完整</strong> Whole</td><td>一个完整的职责单元，可以整体拔出、整体插入</td></tr>
+      <tr><td><strong>独立</strong> Independent</td><td>除了公共库，不依赖其他模块就能完成自己的核心职能，可独立开发和测试</td></tr>
+      <tr><td><strong>契约可靠</strong> Contractually sound</td><td>行为有明确定义，在任何情况下都可被信赖</td></tr>
+      <tr><td><strong>分离</strong> Separate</td><td>不侵入协作者的内部</td></tr>
+    </tbody>
+  </table></div>
+  <p>关键推论：<strong>不同的模块装配方式 = 不同的应用语义。</strong>"持久化到数据库"换成"持久化到数据集群"、"Web 界面"换成"桌面 GUI"，只要契约不变，整个应用继续工作。</p>
+
+  <h3><span class="sec">4.2</span>两个方向的切分</h3>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 780 250" role="img" aria-label="关注点分离有两个方向：水平切分把基础设施逻辑与应用逻辑分开，垂直切分把不同业务领域分开" xmlns="http://www.w3.org/2000/svg">
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5" opacity=".65">纵切：按业务领域</text>
+      <rect x="16" y="34" width="150" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="91" y="66" text-anchor="middle" font-size="11">拼写检查</text>
+      <text x="91" y="84" text-anchor="middle" font-size="9.5" opacity=".65">应用逻辑</text>
+      <rect x="174" y="34" width="150" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="249" y="66" text-anchor="middle" font-size="11">文本编辑</text>
+      <text x="249" y="84" text-anchor="middle" font-size="9.5" opacity=".65">应用逻辑</text>
+      <rect x="332" y="34" width="150" height="70" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="407" y="66" text-anchor="middle" font-size="11">通讯录</text>
+      <text x="407" y="84" text-anchor="middle" font-size="9.5" opacity=".65">应用逻辑</text>
+
+      <line x1="170" y1="30" x2="170" y2="108" stroke="#A94A16" stroke-width="1.3" stroke-dasharray="5 4"/>
+      <line x1="328" y1="30" x2="328" y2="108" stroke="#A94A16" stroke-width="1.3" stroke-dasharray="5 4"/>
+
+      <line x1="16" y1="124" x2="482" y2="124" stroke="#A94A16" stroke-width="1.6"/>
+      <text x="496" y="128" font-size="10" fill="#A94A16">横切：基础设施 / 应用逻辑</text>
+
+      <rect x="16" y="144" width="228" height="60" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="130" y="170" text-anchor="middle" font-size="11">持久化</text>
+      <text x="130" y="188" text-anchor="middle" font-size="9.5" opacity=".65">基础设施逻辑</text>
+      <rect x="254" y="144" width="228" height="60" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="368" y="170" text-anchor="middle" font-size="11">安全</text>
+      <text x="368" y="188" text-anchor="middle" font-size="9.5" opacity=".65">基础设施逻辑</text>
+
+      <text x="540" y="60" font-size="9.5" opacity=".7">拼写检查和文本编辑</text>
+      <text x="540" y="76" font-size="9.5" opacity=".7">都是应用逻辑，但彼此</text>
+      <text x="540" y="92" font-size="9.5" opacity=".7">无关 → 该纵向分开</text>
+
+      <text x="540" y="170" font-size="9.5" opacity=".7">持久化和安全服务于</text>
+      <text x="540" y="186" font-size="9.5" opacity=".7">上面所有领域</text>
+      <text x="540" y="202" font-size="9.5" opacity=".7">→ 该横向分开</text>
+
+      <text x="249" y="238" text-anchor="middle" font-size="9.5" opacity=".6">紧耦合 = 这些虚线被打穿。第 2 章讲的横切分离，在这里扩展成两个维度</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>两条切线。</b>横切分离（第 2 章的主题）把接线、连接池、socket 这类逻辑从业务里剥出去；纵切分离把互不相干的业务领域彼此隔开。健康的架构两条线都清晰。</figcaption>
+  </figure>
+
+  <h4>紧耦合的真实代价</h4>
+  <p>作者用了一个极其干净的例子，值得完整走一遍。<code>StringSearch</code> 在字符串列表里查找：</p>
+<pre><code>public class StringSearch {
+    public String startsWith(<b>ArrayList&lt;String&gt;</b> list, String s) {
+        Iterator&lt;String&gt; iter = list.iterator();   <i>// 其实只需要一个迭代器</i>
+        ...
+    }
+    public boolean contains(<b>ArrayList&lt;String&gt;</b> list, String s) { ... }
+}</code></pre>
+  <p>需求变了，要搜 <code>HashSet</code>。看看代价怎么一层层放大：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 240" role="img" aria-label="三个版本的 StringSearch：绑定 ArrayList 时每个方法都要改，改成依赖 Collection 接口后所有集合类型都能用且无需改动" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+
+      <text x="16" y="20" font-size="10.5" fill="#8E2A26">v1 紧耦合到 ArrayList</text>
+      <rect x="16" y="34" width="150" height="76" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.3"/>
+      <text x="91" y="56" text-anchor="middle" font-size="10.5">StringSearch</text>
+      <line x1="30" y1="66" x2="152" y2="66" stroke="#8E2A26" stroke-width=".8" opacity=".5"/>
+      <text x="91" y="82" text-anchor="middle" font-size="9">startsWith(ArrayList)</text>
+      <text x="91" y="98" text-anchor="middle" font-size="9">contains(ArrayList)</text>
+      <text x="91" y="132" text-anchor="middle" font-size="9.5" fill="#8E2A26">换 HashSet =</text>
+      <text x="91" y="148" text-anchor="middle" font-size="9.5" fill="#8E2A26">改每一个方法</text>
+      <text x="91" y="164" text-anchor="middle" font-size="9.5" fill="#8E2A26">+ 改每一个调用方</text>
+
+      <line x1="180" y1="90" x2="216" y2="90" stroke="currentColor" stroke-width="1.2" marker-end="url(#a8)"/>
+
+      <text x="230" y="20" font-size="10.5" opacity=".8">v2 提升为依赖，但仍是具体类</text>
+      <rect x="230" y="34" width="150" height="76" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="305" y="56" text-anchor="middle" font-size="10.5">StringSearch</text>
+      <line x1="244" y1="66" x2="366" y2="66" stroke="currentColor" stroke-width=".8" opacity=".4"/>
+      <text x="305" y="82" text-anchor="middle" font-size="9">final HashSet set</text>
+      <text x="305" y="98" text-anchor="middle" font-size="9">contains(String)</text>
+      <text x="305" y="132" text-anchor="middle" font-size="9.5" opacity=".7">改 TreeSet 时</text>
+      <text x="305" y="148" text-anchor="middle" font-size="9.5" opacity=".7">只改一处 + 调用方</text>
+      <text x="305" y="164" text-anchor="middle" font-size="9.5" opacity=".7">仍然不够</text>
+
+      <line x1="394" y1="90" x2="430" y2="90" stroke="currentColor" stroke-width="1.2" marker-end="url(#a8)"/>
+
+      <text x="444" y="20" font-size="10.5" fill="#0C6660">v3 依赖接口</text>
+      <rect x="444" y="34" width="150" height="76" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
+      <text x="519" y="56" text-anchor="middle" font-size="10.5">StringSearch</text>
+      <line x1="458" y1="66" x2="580" y2="66" stroke="#0C6660" stroke-width=".8" opacity=".5"/>
+      <text x="519" y="82" text-anchor="middle" font-size="9">final Collection&lt;String&gt;</text>
+      <text x="519" y="98" text-anchor="middle" font-size="9">contains(String)</text>
+
+      <line x1="608" y1="60" x2="648" y2="42" stroke="#0C6660" stroke-width="1.1" marker-end="url(#a8)"/>
+      <line x1="608" y1="72" x2="648" y2="72" stroke="#0C6660" stroke-width="1.1" marker-end="url(#a8)"/>
+      <line x1="608" y1="84" x2="648" y2="102" stroke="#0C6660" stroke-width="1.1" marker-end="url(#a8)"/>
+      <text x="654" y="46" font-size="9.5">List</text>
+      <text x="654" y="76" font-size="9.5">Set</text>
+      <text x="654" y="106" font-size="9.5">map.keySet()</text>
+
+      <text x="519" y="140" text-anchor="middle" font-size="9.5" fill="#0C6660">全部零改动</text>
+      <text x="519" y="156" text-anchor="middle" font-size="9.5" fill="#0C6660">还能加新方法而不影响调用方</text>
+
+      <text x="400" y="216" text-anchor="middle" font-size="9.5" opacity=".6">紧耦合的代价不是"写起来难看"，是"改动会沿着调用链扩散"</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>耦合度决定改动的传播半径。</b>v1 每个方法都要改、每个调用方都要改；v3 一次都不用改，还顺带获得了"用 mock 集合测试"的能力。<code>Collection</code> 这个接口在这里扮演的角色，就是下一节说的<b>契约</b>。</figcaption>
+  </figure>
+
+  <h4>面向契约编程</h4>
+  <p>契约（接口）远不止是"通信手段"。作者列了五重身份，最后一条是全书的关键：</p>
+  <ul>
+    <li>行为的精确规格说明；</li>
+    <li>现实业务目的的隐喻；</li>
+    <li>意图的揭示（该怎么用）；</li>
+    <li>一种内建的文档形式；</li>
+    <li><strong>行为验证的基石</strong>——验证一个实现是否正确，就是拿它跟契约对照测试。</li>
+  </ul>
+  <p>星巴克点单的契约：</p>
+<pre><code>public interface Customer  { void waitInLine(); boolean placeOrder(String choice); void pickup(Coffee c); }
+public interface Attendant { boolean takeOrder(String choice); Coffee prepareOrder(); }</code></pre>
+  <p>注意两个接口都<strong>只说做什么，不说怎么做</strong>。于是 <code>BrazilianCustomer</code> 可以被 <code>RoboticAttendant</code> 服务，系统行为保持一致。</p>
+  <p>作者还强调<strong>异常也是契约的一部分</strong>：如果 <code>takeOrder()</code> 在卖光时应该返回 <code>false</code>，它却返回 <code>true</code> 然后不上单，整个应用就坏了。</p>
+  <p>最后，契约必须写清楚边界情况——下面这个接口是<strong>不合格</strong>的：</p>
+  <div class="split">
+    <div class="bad"><h5>规格不足</h5>
+<pre><code>public interface StringSearch {
+    boolean contains(String s);
+    String startsWith(String fragment);
+}
+<i>// startsWith 返回哪个匹配？第一个？
+// 最后一个？没匹配返回什么？</i></code></pre>
+    </div>
+    <div class="good"><h5>合格</h5>
+<pre><code>/**
+ * 测试列表中是否有以给定序列开头的字符串。
+ * @param fragment 用于搜索的片段
+ * @return 返回<b>找到的第一个</b>匹配项，
+ *         没有匹配时返回 <b>null</b>。
+ */
+String startsWith(String fragment);</code></pre>
+    </div>
+  </div>
+
+  <h3><span class="sec">4.3</span>测试：单元 vs 集成</h3>
+  <p>作者的立场很硬：<strong>没有经过形式化验证的代码，价值近乎为零。</strong>手工点点菜单不算测试，它漏掉了坏数据、并发瓶颈这些看不见的失效点。</p>
+
+  <h4>out-of-container 单元测试</h4>
+<pre><code>public class BookCatalogTest {
+    @Test public void freeFormSearch() {
+        MockLibrary mock = new MockLibrary();
+        new SimpleBookCatalog(<b>mock</b>).search("dependency injection");
+        assert mock.foundByKeyword();
+    }
+}</code></pre>
+  <p>注意：这里<strong>用的是手工构造</strong>，没有注入器。依赖只有一两个，全是 mock，为几个 mock 去配一个注入器纯属自找麻烦。</p>
+
+  <div class="box trap">
+    <span class="tag">⚠ 反模式："我真的需要我的依赖"</span>
+<pre><code>public class BookCatalogTest {
+    private Injector injector;
+
+    @BeforeMethod public void setup() {
+        injector = Guice.createInjector(<b>new TestBooksModule()</b>);   <i>// 只为测试而存在的配置</i>
+    }
+
+    @Test public void freeFormBookSearch() {
+        new SimpleBookCatalog(injector.getInstance(Library.class)).search("..");
+    }
+}</code></pre>
+    <p>三宗罪：① 测试多了一个对注入器的依赖；② <code>TestBooksModule</code> 是纯粹为测试维护的、不产生价值的代码；③ <strong>注入器配置一旦出错，测试报的是假阴性</strong>——你会花几小时在错误的地方找 bug。</p>
+    <p>作者的判据非常好用：<em>"当你发现某个类的依赖没法被 mock 掉，你该重新考虑设计。"</em></p>
+  </div>
+
+  <h4>mock 不只是替身，还是行为断言</h4>
+  <p>验证一个类的行为，一半在返回值，另一半在<strong>它怎么使唤自己的依赖</strong>。这里必须用行为脚本：</p>
+<pre><code>@Test public void freeFormBookSearch() {
+    Library mock = <b>createStrictMock</b>(Library.class);   <i>// strict = 顺序也要对</i>
+    String criteria = "dependency injection";
+
+    expect(mock.findByAuthor(criteria)).andReturn(null);    <i>// 先按作者</i>
+    expect(mock.findByKeyword(criteria)).andReturn(null);   <i>// 再按关键字</i>
+    Book di = new Book("dependency injection");
+    expect(mock.findByTitle(criteria)).andReturn(di);       <i>// 最后按标题</i>
+
+    replay(mock);
+    Book result = new SimpleBookCatalog(mock).search(criteria);
+    verify(mock);                                <i>// 断言调用方式和顺序</i>
+    assert di.equals(result);                    <i>// 断言返回值</i>
+}</code></pre>
+  <p>如果实现改成"优先按标题搜"，这个测试会失败——<strong>调用顺序本身就是行为的一部分</strong>。</p>
+
+  <h4>集成测试</h4>
+  <p>集成测试关心的是"拼起来对不对"，所以它<strong>可以且应该</strong>违反上面那些单元测试规则：</p>
+<pre><code>public class HomePageIntegrationTest {
+    private Injector injector;
+
+    @BeforeTest public void prepareContainer() {
+        injector = Guice.createInjector(<b>new WebModule()</b>,          <i>// 生产模块</i>
+                                        new TestPersistenceModule()); <i>// 只有环境差异走替身</i>
+    }
+    @AfterTest public void cleanup() { ... }
+
+    @Test public void renderHomePage() throws Exception {
+        injector.getInstance(HomeServlet.class).service(mockRequest, mockResponse);
+    }
+}</code></pre>
+  <p>五条原则：<strong>尽量用生产模块</strong>；<strong>只把环境差异（数据库实例等）抽出来做平行配置</strong>；外部交互靠模拟（HTTP 请求）；启动昂贵，所以用 <code>@BeforeTest</code> 只跑一次；必须有 <code>cleanup()</code> 关闭外部资源。</p>
+  <div class="box note">
+    <span class="tag">一个很好的判据</span>
+    <p>"在一个健康的代码库里，<strong>集成测试应该很少失败</strong>。它揭示的通常是配置怪癖和库的互操作问题，而不是编码错误——那些应该被单元测试覆盖掉。"</p>
+    <p>如果你的集成测试天天挂在业务逻辑上，说明单元测试覆盖不足。</p>
+  </div>
+
+  <h3><span class="sec">4.4</span>运行时重绑定</h3>
+  <p>最后一节讲一个高级（且危险）的用法：<strong>运行时改变对象图的结构</strong>。作者先泼冷水：</p>
+  <div class="box trap">
+    <span class="tag">⚠ 先读这段警告</span>
+    <p>"在运行时修改注入器配置和对象模型<strong>有潜在危险</strong>。没有仔细的库支持，你会失去启动时的校验与安全特性，可能导致不可预测、不稳定、甚至无法检测的 bug。"</p>
+    <p>五条约束：绑定一旦建立就持续生效直到重绑；<strong>已经持有旧实例的对象不会更新</strong>；重绑与作用域强相关（长命对象拿着被重绑的键就必须重注入或丢弃）；重绑与生命周期强相关（依赖变更需要通知相关模块）；不是所有注入器都支持。</p>
+  </div>
+  <p>朴素做法是把两条依赖都注入进去然后用 flag 切换——但这就把基础设施逻辑混进了业务类。Adapter 又一次救场：</p>
+<pre><code>public class DependencyAdapter implements Dependency, <b>Rebindable</b> {
+    private final DependencyA a;
+    private final DependencyB b;
+    private boolean useA = true;
+
+    public void rebind()   { useA = false; }
+    public int calculate() { return useA ? a.calculate() : b.calculate(); }
+}</code></pre>
+  <p>于是客户端回到干净状态：</p>
+<pre><code>public class LongLived {
+    private final Dependency dep;     <i>// 只认契约，重绑完全透明</i>
+    @Inject public LongLived(Dependency dep) { this.dep = dep; }
+    public void go() { int r = dep.calculate(); ... }
+}</code></pre>
+  <p>注意 <code>Rebindable</code> 这个角色接口：控制逻辑只需维护一个 <code>Rebindable</code> 列表，逐个通知即可。<em>这就是第 7 章"多播生命周期"的雏形。</em></p>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 集成测试：Testcontainers 改变了一切</h4>
+    <p>原书的集成测试要点是"用一个平行的 <code>TestPersistenceModule</code> 指向测试数据库"。这套做法有个根本缺陷——<strong>测试环境和生产环境用的不是同一个数据库</strong>（书里的例子用内存 HSQL，生产用 PostgreSQL），于是最该被集成测试抓住的那类问题（SQL 方言、事务隔离级别、索引行为）恰好抓不住。</p>
+    <p>Testcontainers 把这个缺口补上了：测试时用 Docker 起一个<strong>真的 PostgreSQL</strong>，用完即弃。</p>
+<pre><code>@SpringBootTest
+@Testcontainers
+class OrderRepositoryTest {
+    @Container @ServiceConnection                 <i>// Spring Boot 3.1+ 自动接线数据源</i>
+    static PostgreSQLContainer&lt;?&gt; db = new PostgreSQLContainer&lt;&gt;("postgres:17");
+
+    @Autowired OrderRepository repo;
+
+    @Test void 按客户查询订单() { ... }            <i>// 打的是真 PostgreSQL</i>
+}</code></pre>
+    <p>作者那句"集成测试要尽可能贴近生产环境"的原则没变，<strong>贴近的程度提高了一个数量级</strong>。</p>
+
+    <h4>② "别在单元测试里启动容器"：官方立场一致</h4>
+    <p>Spring 为此提供了<strong>测试切片</strong>——不是全有或全无，而是按层加载：</p>
+    <div class="tw compact"><table>
+      <thead><tr><th>粒度</th><th>写法</th><th>加载什么</th></tr></thead>
+      <tbody>
+        <tr><td>纯单元</td><td><code>new Service(mock(Dao.class))</code></td><td>什么都不加载 —— <b>首选</b></td></tr>
+        <tr><td>Web 层切片</td><td><code>@WebMvcTest(OrderController.class)</code></td><td>只加载 MVC 相关 bean，服务层用 <code>@MockitoBean</code></td></tr>
+        <tr><td>持久层切片</td><td><code>@DataJpaTest</code></td><td>只加载 JPA 相关 bean</td></tr>
+        <tr><td>完整集成</td><td><code>@SpringBootTest</code></td><td>整个应用上下文 —— 用最少</td></tr>
+      </tbody>
+    </table></div>
+    <p>这正是原书的分层测试观点被产品化的结果。<em>补充：<code>@MockBean</code> 在 Spring Boot 3.4 起被 <code>@MockitoBean</code> 取代。</em></p>
+
+    <h4>③ 工具链换代</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>书中</th><th>今天</th></tr></thead>
+      <tbody>
+        <tr><td>TestNG / JUnit 4</td><td><strong>JUnit 5</strong>（<code>@BeforeEach</code>/<code>@BeforeAll</code>、参数化、嵌套测试）</td></tr>
+        <tr><td>EasyMock（<code>createStrictMock</code>/<code>replay</code>/<code>verify</code>）</td><td><strong>Mockito</strong>（<code>mock()</code>/<code>when()</code>/<code>verify()</code>）；顺序断言用 <code>InOrder</code></td></tr>
+        <tr><td><code>assert x : "msg"</code>（需要 <code>-ea</code>）</td><td><strong>AssertJ</strong> <code>assertThat(x).isEqualTo(y)</code></td></tr>
+      </tbody>
+    </table></div>
+<pre><code><i>// 上面那段 EasyMock 脚本的 Mockito 版本</i>
+@Test void 按作者关键字标题的顺序搜索() {
+    Library lib = mock(Library.class);
+    Book di = new Book("dependency injection");
+    when(lib.findByTitle("dependency injection")).thenReturn(di);
+
+    Book result = new SimpleBookCatalog(lib).search("dependency injection");
+
+    InOrder order = inOrder(lib);                       <i>// 顺序断言</i>
+    order.verify(lib).findByAuthor("dependency injection");
+    order.verify(lib).findByKeyword("dependency injection");
+    order.verify(lib).findByTitle("dependency injection");
+    assertThat(result).isEqualTo(di);
+}</code></pre>
+
+    <h4>④ "不同部署剖面"：已经标准化了</h4>
+    <p>4.4 节那套手写 <code>Rebindable</code> 的方案，今天只在"不重启就要切换"这个极窄的场景才需要。绝大多数"不同环境用不同实现"的需求，由配置机制直接解决：</p>
+<pre><code>@Profile("local")      @Bean Library fileLibrary()     { return new FileLibrary(); }
+@Profile("production") @Bean Library databaseLibrary() { return new DatabaseLibrary(); }
+
+@ConditionalOnProperty(name = "search.engine", havingValue = "elastic")
+@Bean SearchEngine elastic() { ... }</code></pre>
+    <p>真正需要运行时切换的场景（灰度、开关），今天交给<strong>专门的 feature flag 系统</strong>（Unleash、LaunchDarkly、或自研配置中心 + <code>@RefreshScope</code>），而不是去动注入器的绑定表。作者的警告依然有效，只是我们把这类需求外包出去了。</p>
+
+    <h4>⑤ "模块"从概念变成了可执行约束</h4>
+    <p>2009 年，模块的四条性质只能靠自觉。今天有工具强制执行：</p>
+    <ul>
+      <li><strong>JPMS</strong>（Java 9+ <code>module-info.java</code>）：在语言层面声明"我导出哪些包、依赖哪些模块"。</li>
+      <li><strong>ArchUnit</strong>：把架构规则写成测试——<code>noClasses().that().resideInAPackage("..domain..").should().dependOnClassesThat().resideInAPackage("..infra..")</code>。</li>
+      <li><strong>Spring Modulith</strong>：单体应用内的模块边界校验 + 模块级集成测试 + 自动生成模块文档。它几乎是把本章的四条性质做成了库。</li>
+      <li><strong>包级私有</strong>（第 9 章会详述）：最低成本、零依赖的模块边界手段，至今仍然最有效。</li>
+    </ul>
+
+    <h4>⑥ 契约的表达变强了</h4>
+<pre><code><i>// sealed 接口：契约现在可以「封闭」实现集合，编译器能做穷尽性检查</i>
+public sealed interface SearchResult permits Found, NotFound {}
+public record Found(Book book) implements SearchResult {}
+public record NotFound() implements SearchResult {}
+
+<i>// 于是 4.2 节那个「没匹配时返回 null」的规格问题，从注释变成了类型</i>
+SearchResult r = search(criteria);
+String msg = switch (r) {                       <i>// 漏掉分支 = 编译错误</i>
+    case Found f    -&gt; f.book().title();
+    case NotFound n -&gt; "未找到";
+};</code></pre>
+    <p>作者当年只能靠 Javadoc 约定"没匹配返回 null"。今天 <code>sealed</code> + <code>record</code> + 模式匹配（Java 21 正式）能把这条规格<strong>写进类型系统</strong>，编译器替你验证。<code>Optional&lt;T&gt;</code> 是更轻量的同类手段。</p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c4/</code> —— <code>StringSearch.java</code>（耦合演进）、<code>BookCatalog</code>/<code>SimpleBookCatalog</code>/<code>Library</code>/<code>Book</code>（契约与松耦合）、<code>BookCatalogTest.java</code>（单元测试）、<code>HomePageIntegrationTest.java</code>（集成测试）。</p>
+  </div>
+
+  <div class="pager"><a href="ch03.html"><span>上一章</span>03 · 注入方式的取舍</a><a class="next" href="ch05.html"><span>下一章</span>05 · 作用域：状态的容器</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>并发、可见性与设计 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a class="on" aria-current="page" href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch9">
+  <p class="eyebrow">第 9 章</p>
+  <h2 class="title">并发、可见性与设计</h2>
+  <p class="lede">本章的立论很简单：<strong>语言与架构的最佳实践，和依赖注入的最佳实践，是同一套东西。</strong>不存在"为 DI 而做的设计"和"为 Java 而做的设计"两张清单。围绕这个立论，作者处理了三件事——对象在线程间的可见性、哪些对象该交给注入器、以及同步与并发的区别。</p>
+  <ul class="chips">
+    <li>不安全发布</li>
+    <li>final 与安全发布</li>
+    <li>数据对象 vs 服务对象</li>
+    <li>包级封装</li>
+    <li>五道不可变性谜题</li>
+    <li>同步 vs 并发</li>
+  </ul>
+
+  <h3><span class="sec">9.1</span>不安全发布</h3>
+  <p>单线程下，写在前读在后，天经地义：</p>
+<pre><code>Map&lt;String, Email&gt; emails = new HashMap&lt;&gt;();
+emails.put("Dhanji", new Email("dhanji@gmail.com"));
+System.out.println(emails.get("Dhanji"));      <i>// 词法顺序保证了正确性</i></code></pre>
+  <p>加一个线程，这个保证就没了：</p>
+<pre><code>public class UnsafePublication {
+    private Map&lt;String, Email&gt; emails = new HashMap&lt;&gt;();
+
+    public void putEmails() {                          <i>// 线程 A</i>
+        emails.put("Dhanji", new Email("dhanji@gmail.com"));
+        System.out.println("Map updated.");
+    }
+    public void read() {                               <i>// 线程 B</i>
+        System.out.println("… really is " + emails.get("Dhanji"));
+    }
+}</code></pre>
+  <p>可能的输出：</p>
+<pre><code>Map updated.
+Dhanji's email address really is <b>null</b></code></pre>
+  <p>作者做了一个很漂亮的加强：<strong>就算线程 A 自己在打印之后立刻读一遍，也可能出现这个结果</strong>：</p>
+<pre><code>Map updated.
+Dhanji's email address really is dhanji@gmail.com    <i>// 线程 A 自己读，正确</i>
+Dhanji's email address really is null                <i>// 线程 B 读，null</i></code></pre>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 840 230" role="img" aria-label="线程 A 的写入停留在自己的本地缓存中未刷到主内存，导致线程 B 读到旧值；顺序正确并不等于可见" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5">线程 A</text>
+      <line x1="90" y1="42" x2="600" y2="42" stroke="currentColor" stroke-width="1" opacity=".35"/>
+      <circle cx="160" cy="42" r="4" fill="currentColor"/>
+      <text x="160" y="32" text-anchor="middle" font-size="9">put()</text>
+      <circle cx="300" cy="42" r="4" fill="currentColor"/>
+      <text x="300" y="32" text-anchor="middle" font-size="9">打印 "Map updated"</text>
+      <circle cx="440" cy="42" r="4" fill="#0C6660"/>
+      <text x="440" y="32" text-anchor="middle" font-size="9" fill="#0C6660">A 自己读 → 正确</text>
+
+      <rect x="120" y="66" width="360" height="34" rx="3" fill="none" stroke="#A94A16" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <text x="300" y="87" text-anchor="middle" font-size="9.5" fill="#A94A16">线程 A 的本地缓存：{Dhanji → …}</text>
+
+      <line x1="300" y1="102" x2="300" y2="126" stroke="#8E2A26" stroke-width="1.3" stroke-dasharray="3 3"/>
+      <text x="316" y="118" font-size="9" fill="#8E2A26">没有同步 = 不保证刷新</text>
+
+      <rect x="120" y="130" width="360" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="300" y="150" text-anchor="middle" font-size="9.5">主内存：{ }（仍是空的）</text>
+
+      <text x="16" y="200" font-size="10.5">线程 B</text>
+      <line x1="90" y1="200" x2="600" y2="200" stroke="currentColor" stroke-width="1" opacity=".35"/>
+      <circle cx="500" cy="200" r="4" fill="#8E2A26"/>
+      <text x="500" y="220" text-anchor="middle" font-size="9" fill="#8E2A26">read() → null</text>
+      <line x1="480" y1="164" x2="500" y2="192" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="3 2" marker-end="url(#c2)"/>
+
+      <text x="640" y="86" font-size="9.5" opacity=".75">顺序 ≠ 可见性</text>
+      <text x="640" y="106" font-size="9.5" opacity=".75">CPU 调度、编译器重排、</text>
+      <text x="640" y="126" font-size="9.5" opacity=".75">本地缓存，三者都能</text>
+      <text x="640" y="146" font-size="9.5" opacity=".75">让 B 看不到 A 写的值</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>这是全书最容易被忽略、后果最严重的一个事实。</b>"我先写的、我打印过了"不构成任何跨线程保证。JVM 允许每个线程持有本地缓存副本，这是为了让优化在各平台上都有空间——代价就是你必须显式声明什么需要被看见。</figcaption>
+  </figure>
+
+  <p>同样的问题会直接出现在依赖注入上：</p>
+  <div class="split">
+    <div class="bad"><h5>可能不安全</h5>
+<pre><code>public class MoreUnsafePublication {
+    private EmailDatabase service;      <i>// 非 final</i>
+
+    public MoreUnsafePublication(EmailDatabase s) {
+        this.service = s;
+    }
+    public void read() {
+        service.get("Dhanji");          <i>// 可能 NPE</i>
+    }
+}</code></pre>
+    </div>
+    <div class="good"><h5>安全</h5>
+<pre><code>public class SafePublication {
+    private <b>final</b> EmailDatabase service;
+
+    public SafePublication(EmailDatabase s) {
+        this.service = s;
+    }
+    public void read() {
+        service.get("Dhanji");          <i>// 所有线程都保证看得到</i>
+    }
+}</code></pre>
+    </div>
+  </div>
+  <div class="box note">
+    <span class="tag">一行代码的价值</span>
+    <p><code>final</code> 字段有语言级的可见性保证：<strong>只要构造器正常返回、且 <code>this</code> 没有在构造期间逃逸出去</strong>，任何线程都能看到它的正确值，不需要额外同步。</p>
+    <p>这也是第 3 章"构造器注入优先"最硬的技术论据——setter 注入的字段不能是 <code>final</code>，因此永远拿不到这个保证。</p>
+  </div>
+
+  <h4>安全接线</h4>
+  <p>有些容器会替你加同步（PicoContainer 的 <code>LOCK</code> 特性、Guice 对单例的保证）。但作者的态度很明确：</p>
+  <div class="box trap">
+    <span class="tag">⚠ 不要依赖容器</span>
+    <p>"不要指望注入器来完成安全接线。<strong>如果你把类设计成在多线程环境下良好行为的，那它无论有没有库的帮助都是安全的。</strong>"三条理由：代码可以在不同环境复用；为并发做设计时需要这个性质；<code>final</code> 本身是意图的声明——别人读到就知道这里不该被改，手滑改了编译器立刻报错。</p>
+  </div>
+
+  <h3><span class="sec">9.2</span>哪些对象该交给注入器</h3>
+  <p>作者说这是新手最容易走极端的地方：有人什么都用容器造，有人把容器当工厂只用一点点。判据其实很简单：</p>
+  <div class="box note">
+    <span class="tag">经验法则</span>
+    <p><strong>凡是「服务」或「动作」组件，交给注入器；凡是「建模数据」的类，用手工构造。</strong></p>
+  </div>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 250" role="img" aria-label="服务对象由注入器管理并享受作用域、拦截、生命周期；数据对象在业务代码中手工创建" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="c3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <rect x="16" y="30" width="330" height="196" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="30" y="52" font-size="10.5" fill="#A94A16">服务对象 · 注入器管理</text>
+
+      <rect x="34" y="64" width="140" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="104" y="86" text-anchor="middle" font-size="10">UserManager</text>
+      <rect x="188" y="64" width="140" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="258" y="86" text-anchor="middle" font-size="10">UserDao</text>
+      <rect x="34" y="106" width="140" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="104" y="128" text-anchor="middle" font-size="10">AuctionManager</text>
+      <rect x="188" y="106" width="140" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="258" y="128" text-anchor="middle" font-size="10">ItemManager</text>
+
+      <text x="34" y="168" font-size="9.5" opacity=".75">特征：无状态或依赖不可变</text>
+      <text x="34" y="186" font-size="9.5" opacity=".75">需要：作用域 · 拦截 · 生命周期 · mock 替换</text>
+      <text x="34" y="204" font-size="9.5" opacity=".75">通常是单例</text>
+
+      <rect x="418" y="30" width="330" height="196" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <text x="432" y="52" font-size="10.5" opacity=".75">数据对象 · 手工构造</text>
+
+      <rect x="436" y="64" width="100" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="486" y="86" text-anchor="middle" font-size="10">User</text>
+      <rect x="550" y="64" width="100" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="600" y="86" text-anchor="middle" font-size="10">Auction</text>
+      <rect x="664" y="64" width="70" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="699" y="86" text-anchor="middle" font-size="10">Item</text>
+      <rect x="436" y="106" width="100" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="486" y="128" text-anchor="middle" font-size="10">Money</text>
+      <rect x="550" y="106" width="184" height="34" rx="2" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="642" y="128" text-anchor="middle" font-size="10">ShoppingCart</text>
+
+      <text x="436" y="168" font-size="9.5" opacity=".75">特征：字段全是标量或其他数据对象</text>
+      <text x="436" y="186" font-size="9.5" opacity=".75">没有依赖；作用域/拦截/生命周期都用不上</text>
+      <text x="436" y="204" font-size="9.5" opacity=".75">方法多是访问器，没什么可测的</text>
+
+      <line x1="350" y1="126" x2="414" y2="126" stroke="currentColor" stroke-width="1.2" marker-end="url(#c3)"/>
+      <text x="382" y="118" text-anchor="middle" font-size="9" opacity=".65">操作</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>左边被注入，右边被 new。</b>判据不是"重不重要"，而是"能不能从容器的能力里获益"。<code>User</code> 没有依赖、可以有几百万个实例、状态会随时间变化——把它交给注入器不会带来任何好处。</figcaption>
+  </figure>
+
+  <h4>封装：不是"藏起来"，是"别泄漏抽象"</h4>
+  <p>作者举了一个非常干净的反例。消息服务：</p>
+  <div class="split">
+    <div class="bad"><h5>抽象泄漏了</h5>
+<pre><code>public interface Messager {
+    void send(<b>EmailMessage</b> msg);   <i>// 泄漏</i>
+}
+
+class JabberMessager implements Messager {
+    public void send(JabberMessage msg) { ... }
+    <i>// ← 编译不过：契约被 Email 绑架了</i>
+}</code></pre>
+    </div>
+    <div class="good"><h5>契约中立</h5>
+<pre><code>public interface Messager {
+    void send(<b>Message</b> msg);        <i>// 中立</i>
+}
+
+class JabberMessager implements Messager {
+    public void send(Message msg) {
+        JabberMessage j = convert(msg);   <i>// 各自转换</i>
+        ...
+    }
+}</code></pre>
+    </div>
+  </div>
+  <p>再进一步：<strong>把实现类彻底藏进包里</strong>。Java 有一个被严重低估的可见性级别——包级私有（不写任何修饰符）：</p>
+<pre><code>package example.messaging;
+
+<b>public</b> interface Messager { void send(Message msg); }        <i>// 唯一对外的东西</i>
+
+<b>class</b> JabberMessager implements Messager { ... }              <i>// 包外不可见</i>
+<b>class</b> JabberTransport { ... }                                 <i>// 包外不可见</i>
+<b>class</b> JabberMessageConverter { ... }                          <i>// 包外不可见</i>
+
+public class MessagingModule extends AbstractModule {           <i>// 加上一个配置类</i>
+    protected void configure() { bind(Messager.class).to(JabberMessager.class); }
+}</code></pre>
+  <p>这个包对外只暴露两样东西：一个单方法接口，一个模块。<strong>整个模块的 API 文档就是那一个方法。</strong>作者拿 warp-persist 的包结构举例，主包里只剩枚举、注解、接口和抽象类。</p>
+  <div class="box note">
+    <span class="tag">作者的经验法则</span>
+    <p>"凡是不属于<strong>接口、枚举、注解、抽象类</strong>的东西，都设成包级私有——因为这四种类型泄漏抽象逻辑的可能性最低。"</p>
+  </div>
+
+  <h3><span class="sec">9.3</span>五道不可变性谜题</h3>
+  <p>作者把这一节写成了闯关题。建议你先自己答，再看解答。</p>
+
+  <h4>谜题 1</h4>
+<pre><code>public class Book {
+    private String title;
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+}</code></pre>
+  <p><strong>不可变吗？</strong>不。有 setter。加 <code>final</code> + 构造器赋值即可。</p>
+
+  <h4>谜题 2</h4>
+<pre><code>public class AddressBook {
+    private final <b>String[]</b> names;
+    public AddressBook(String[] names) { this.names = names; }
+    public String[] getNames() { return names; }
+}</code></pre>
+  <p><strong>不可变吗？</strong><em>不。</em><code>final</code> 只锁住了<strong>引用</strong>，数组内容照样能改：</p>
+<pre><code>String[] names = book.getNames();
+for (int i = 0; i &lt; names.length; i++) names[i] = "Censored!";   <i>// 合法且生效</i></code></pre>
+  <p>作者的结论很直接：<strong>不要用数组</strong>，或者只在有明确保护和文档的前提下用。</p>
+
+  <h4>谜题 3</h4>
+<pre><code>public class BetterAddressBook {
+    private final List&lt;String&gt; names;
+    public BetterAddressBook(List&lt;String&gt; names) {
+        this.names = <b>Collections.unmodifiableList(names)</b>;
+    }
+    public List&lt;String&gt; getNames() { return names; }
+}</code></pre>
+  <p><strong>不可变吗？</strong>看起来是——<code>book.getNames().add(...)</code> 会抛异常。</p>
+
+  <h4>谜题 4（同一个类，换个用法）</h4>
+<pre><code>List&lt;String&gt; physicists = new ArrayList&lt;&gt;(List.of("Landau", "Weinberg", "Hawking"));
+BetterAddressBook book = new BetterAddressBook(physicists);
+
+<b>physicists.add("Einstein");</b>        <i>// 改的是原始列表</i>
+
+book.getNames();                     <i>// → 四个人！</i></code></pre>
+  <p><strong>原来不是。</strong><code>unmodifiableList</code> 只是一个<em>视图</em>，底层还是那个可变列表。修法是<strong>构造时复制</strong>：</p>
+<pre><code>@Immutable
+public class BestAddressBook {
+    private final List&lt;String&gt; names;
+    public BestAddressBook(List&lt;String&gt; names) {
+        this.names = Collections.unmodifiableList(<b>new ArrayList&lt;&gt;(names)</b>);   <i>// 防御性拷贝</i>
+    }
+}</code></pre>
+
+  <h4>谜题 5</h4>
+<pre><code>public class Library {
+    private final List&lt;<b>Book</b>&gt; books;                              <i>// Book 见谜题 1</i>
+    public Library(List&lt;Book&gt; books) {
+        this.books = Collections.unmodifiableList(new ArrayList&lt;&gt;(books));
+    }
+    public List&lt;Book&gt; getBooks() { return books; }
+}</code></pre>
+  <p>字段 <code>final</code>、列表不可改、还做了拷贝。<strong>不可变吗？</strong></p>
+<pre><code>library.getBooks().get(0).<b>setTitle("The Tempest");</b>            <i>// 照样能改</i></code></pre>
+  <div class="box note">
+    <span class="tag">不可变性的黄金律</span>
+    <p><strong>一个对象要不可变，它的每一个依赖也必须不可变。</strong>前面 <code>BestAddressBook</code> 之所以侥幸成功，只是因为 Java 的 <code>String</code> 本身不可变。</p>
+  </div>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 780 200" role="img" aria-label="不可变性的五层检查：final 引用、集合视图、防御性拷贝、元素类型本身、以及整条依赖链" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="c4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor">
+      <text x="16" y="20" font-size="10" opacity=".6">要通过全部五关，才叫不可变</text>
+
+      <rect x="16" y="36" width="132" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="82" y="56" text-anchor="middle" font-size="10">① 字段 final</text>
+      <text x="82" y="74" text-anchor="middle" font-size="8.5" opacity=".65">挡住 setter（谜题 1）</text>
+      <line x1="150" y1="62" x2="176" y2="62" stroke="currentColor" stroke-width="1.1" marker-end="url(#c4)"/>
+
+      <rect x="180" y="36" width="132" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="246" y="56" text-anchor="middle" font-size="10">② 不用数组</text>
+      <text x="246" y="74" text-anchor="middle" font-size="8.5" opacity=".65">final 管不了元素（谜题 2）</text>
+      <line x1="314" y1="62" x2="340" y2="62" stroke="currentColor" stroke-width="1.1" marker-end="url(#c4)"/>
+
+      <rect x="344" y="36" width="132" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="410" y="56" text-anchor="middle" font-size="10">③ 只读视图</text>
+      <text x="410" y="74" text-anchor="middle" font-size="8.5" opacity=".65">挡住外部 add（谜题 3）</text>
+      <line x1="478" y1="62" x2="504" y2="62" stroke="currentColor" stroke-width="1.1" marker-end="url(#c4)"/>
+
+      <rect x="508" y="36" width="132" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="574" y="56" text-anchor="middle" font-size="10">④ 防御性拷贝</text>
+      <text x="574" y="74" text-anchor="middle" font-size="8.5" opacity=".65">切断源列表（谜题 4）</text>
+
+      <line x1="574" y1="90" x2="574" y2="116" stroke="#A94A16" stroke-width="1.3" marker-end="url(#c4)"/>
+
+      <rect x="440" y="120" width="268" height="52" rx="3" fill="none" stroke="#A94A16" stroke-width="1.5"/>
+      <text x="574" y="140" text-anchor="middle" font-size="10.5" fill="#A94A16">⑤ 元素类型本身也不可变</text>
+      <text x="574" y="158" text-anchor="middle" font-size="8.5" fill="#A94A16">递归到整条依赖链（谜题 5）</text>
+
+      <text x="230" y="146" font-size="9.5" opacity=".7">前四关都在讲「容器」，</text>
+      <text x="230" y="164" font-size="9.5" opacity=".7">第五关才是真正的分水岭</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>只差一关就前功尽弃。</b><code>Library</code> 通过了①②③④，栽在⑤上。这也解释了为什么"不可变"在实践中这么难做对——它是一个关于<b>整个对象图</b>的性质，不是关于单个类的。</figcaption>
+  </figure>
+
+  <h3><span class="sec">9.4</span>同步 ≠ 并发</h3>
+  <p>不可变解决不了所有问题——有时候你就是需要共享的可变状态（计数器、缓存）。这时要区分两个目标：<strong>同步</strong>是让数据保持一致，<strong>并发</strong>是让线程不要排队。</p>
+
+  <h4>计数器</h4>
+  <div class="split">
+    <div class="bad"><h5>同步：正确但会堵</h5>
+<pre><code>public class MessageCounter {
+    private int count = 0;
+
+    public <b>synchronized</b> void messageReceived() {
+        count++;
+    }
+}
+<i>// 每个线程都要抢锁、排队、放锁
+// 线程一多就是瓶颈</i></code></pre>
+    </div>
+    <div class="good"><h5>并发：不排队</h5>
+<pre><code>public class MessageCounter {
+    private final AtomicInteger count =
+        new AtomicInteger(0);
+
+    public void messageReceived() {
+        count.<b>incrementAndGet()</b>;
+    }
+}
+<i>// 一条 CPU 原子指令，不可被打断</i></code></pre>
+    </div>
+  </div>
+  <p><code>count++</code> 看起来是一个操作，实际是三个：<strong>读 → 加一 → 写回</strong>。中间任何一步都可能被别的线程插进来。<code>incrementAndGet()</code> 是硬件级原子操作，不会被打断，也不会阻塞别人。</p>
+
+  <h4>缓存</h4>
+  <div class="split">
+    <div class="bad"><h5>全局一把锁</h5>
+<pre><code>private final Map&lt;String, Data&gt; map =
+    Collections.<b>synchronizedMap</b>(new HashMap&lt;&gt;());
+<i>// 每次 get() 都要拿锁
+// 高流量下不可接受</i></code></pre>
+    </div>
+    <div class="good"><h5>并发容器</h5>
+<pre><code>private final Map&lt;String, Data&gt; map =
+    new <b>ConcurrentHashMap</b>&lt;&gt;();
+<i>// 读完全无锁
+// 写只锁很小的局部</i></code></pre>
+    </div>
+  </div>
+  <p>作者的收尾很好：<strong>用三道关卡处理并发问题——先问能不能不可变，再问是不是安全发布，最后才考虑并发数据结构。</strong></p>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 一处需要修正的技术细节</h4>
+    <p>书里说 <code>ConcurrentHashMap</code> 把键"分成若干条带（stripe），每条带一把锁"。<strong>这是 Java 5/6 的实现，Java 8 已经重写了。</strong>现在的实现是：读完全无锁（依赖 <code>volatile</code> 读）；写用 CAS，只有哈希冲突时才对<strong>单个桶</strong>加 <code>synchronized</code>。锁的粒度比"条带"更细，<code>concurrencyLevel</code> 构造参数也只剩兼容意义了。</p>
+    <p><em>结论方向完全正确，只是内部机制要更新。</em>另外高竞争的纯计数场景，<code>LongAdder</code> 比 <code>AtomicLong</code> 更快（它内部分散热点，读时求和）。</p>
+
+    <h4>② 五道谜题：<code>record</code> 干掉第一道，其余四道全部存活</h4>
+<pre><code><i>// 谜题 1 消失：record 的字段天然 final，没有 setter</i>
+record Book(String title) {}
+
+<i>// 但谜题 2 依然存在！</i>
+record AddressBook(String[] names) {}          <i>// ← 数组元素照样能改</i>
+
+<i>// 谜题 5 也依然存在</i>
+record Library(List&lt;Book&gt; books) {}            <i>// books 可以是可变列表；Book 若可变则更糟</i>
+
+<i>// 正确写法：紧凑构造器里做防御性拷贝</i>
+record Library(List&lt;Book&gt; books) {
+    Library {
+        books = List.copyOf(books);            <i>// 拷贝 + 不可变，一步到位（Java 10+）</i>
+    }
+}</code></pre>
+    <p><strong>这是最值得强调的一点</strong>：很多人以为用了 <code>record</code> 就是不可变了。<code>record</code> 只保证<em>浅层</em>不可变——它自动通过第①关，②③④⑤四关还是要你自己过。</p>
+
+    <h4>③ 不可变集合：终于有了一等公民</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>2009 年</th><th>今天</th></tr></thead>
+      <tbody>
+        <tr><td><code>Collections.unmodifiableList(new ArrayList&lt;&gt;(src))</code></td><td><code>List.copyOf(src)</code>（Java 10）—— 拷贝 + 真正不可变，一步完成</td></tr>
+        <tr><td>—</td><td><code>List.of(...)</code> / <code>Map.of(...)</code> / <code>Set.of(...)</code>（Java 9）</td></tr>
+        <tr><td>—</td><td><code>Collectors.toUnmodifiableList()</code>（Java 10）</td></tr>
+        <tr><td>Google Collections（书出版时刚起步）</td><td>Guava <code>ImmutableList</code> —— 仍然是最全的一套</td></tr>
+      </tbody>
+    </table></div>
+    <p>注意一个语义区别：<code>List.of()</code> 返回的是<strong>真正不可变的列表</strong>，不是"不可修改的视图"——谜题 4 那个漏洞在它身上不存在。</p>
+
+    <h4>④ <code>@Immutable</code>：从注释升级为编译期检查</h4>
+    <p>书里的 <code>@Immutable</code>（jcip-annotations）只是文档，"对程序语义没有影响"。今天有真会干活的版本：</p>
+<pre><code>@com.google.errorprone.annotations.Immutable        <i>// Error Prone</i>
+record Library(ImmutableList&lt;Book&gt; books) {}
+<i>// ← 如果 Book 不是 @Immutable，编译期直接报错。
+//    这正好把谜题 5 变成了编译器的工作</i></code></pre>
+
+    <h4>⑤ <code>volatile</code> 之外</h4>
+    <p>9.1 节用 <code>volatile</code> 解决可见性，至今有效。补充两条：<code>VarHandle</code>（Java 9）提供了比 <code>volatile</code> 更精细的内存序控制（acquire/release/opaque），用于高性能库；<code>final</code> 字段的保证在 Java 9 之后随 JMM 的澄清而更加明确。<strong>但对绝大多数应用代码，作者的建议仍是最优解：优先不可变，其次 <code>final</code>，再次 <code>volatile</code>，最后才是锁。</strong></p>
+
+    <h4>⑥ 虚拟线程让这一章更重要了</h4>
+    <p>Java 21 的虚拟线程把"开线程"的成本降到接近零，于是：</p>
+    <ul>
+      <li><strong>共享可变状态被并发触碰的概率大幅上升</strong>——本章所有结论的权重都提高了；</li>
+      <li><code>synchronized</code> 在早期虚拟线程实现里会"钉住"载体线程（pinning）造成吞吐损失，<strong>推荐改用 <code>ReentrantLock</code></strong>（JDK 24+ 的 JEP 491 已消除大部分 pinning，但迁移建议仍在）；</li>
+      <li>线程池不再是必需品 —— <code>Executors.newVirtualThreadPerTaskExecutor()</code>；</li>
+      <li><strong>结构化并发</strong>（<code>StructuredTaskScope</code>）让并发任务的生命周期跟代码块绑定，配合第 5、6 章说的 <code>ScopedValue</code> 传递上下文。</li>
+    </ul>
+
+    <h4>⑦ "服务 vs 数据"：判据没变，边界更清楚了</h4>
+    <p>9.2 节的经验法则今天有了语法上的对应物：<strong><code>record</code> 就是"数据对象"的语法标记</strong>。看到 <code>record</code>，你就知道它不该被注入、不该被 AOP 拦截（它是 final 的，见第 8 章）、不该有作用域。这大概是本书某条经验法则被语言层面认可得最彻底的一次。</p>
+
+    <h4>⑧ 包级封装：依然是性价比最高的一招</h4>
+    <p>作者那条"只把接口、枚举、注解、抽象类设为 public"的建议，今天有了更强的工具，但<strong>包级私有仍然是零成本、零依赖、立即可用的那一个</strong>：</p>
+    <ul>
+      <li><strong>JPMS</strong>（<code>module-info.java</code>）：模块级的 <code>exports</code>，比包级私有更强，但需要整个依赖链都模块化；</li>
+      <li><strong>Spring Modulith</strong>：以包为模块边界，用测试来验证"没人越界访问内部包"；</li>
+      <li><strong>ArchUnit</strong>：把这条规则写成测试。</li>
+    </ul>
+    <p><em>顺带一提：作者截图展示的 warp-persist 包结构今天已经无法访问（项目停更），但那种"一个包只暴露一个接口 + 一个配置类"的组织方式，正是现代库设计的通行做法。</em></p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c9/</code> —— <code>UnsafePublication</code>/<code>MoreUnsafePublication</code>/<code>SafePublication</code>/<code>ConcurrentPublication</code>（发布）、<code>Book</code>/<code>ImmutableBook</code>/<code>AddressBook</code>/<code>BetterAddressBook</code>/<code>BestAddressBook</code>/<code>Library</code>/<code>AddressBookMutator</code>（五道谜题）、<code>MessageCounter</code>/<code>ConcurrentCache</code>（同步 vs 并发）、<code>Messager</code>/<code>Emailer</code>/<code>JabberMessager</code>/<code>MessagingModule</code>/<code>MessageClient</code>（封装）、<code>UserManager</code>/<code>UserDao</code>/<code>User</code>/<code>NewUserPage</code>（数据 vs 服务）、<code>Annotations.java</code>（jcip 注解）。</p>
+  </div>
+
+  <div class="pager"><a href="ch08.html"><span>上一章</span>08 · 拦截、代理与 AOP</a><a class="next" href="ch10.html"><span>下一章</span>10 · 与第三方框架集成</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

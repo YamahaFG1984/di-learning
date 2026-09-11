@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home on" href="index.html" aria-current="page"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter hero" id="index">
+  <p class="eyebrow">目录</p>
+  <h2 class="title">依赖注入十一讲</h2>
+  <p class="lede">Dhanji R. Prasanna《Dependency Injection: Design patterns using Spring and Guice》（Manning, 2009）全书精讲。<strong>原理照讲，代码全部翻新</strong>——每章配机制图，并逐条对照 Spring 7 / Spring Boot 4、Guice 7、Jakarta EE 11、Dagger 2 与 Java 25 LTS 的现状。</p>
+  <ul class="chips">
+    <li>11 章 + 2 附录</li>
+    <li>28 张机制图</li>
+    <li>2026 对照</li>
+    <li>配套源码</li>
+  </ul>
+  <p>第一次读建议从 <a href="ch00.html">00 · 导读</a> 开始；只想知道哪些东西过时了，直接看 <a href="appendix-a.html">附录 A · 迁移总表</a>。</p>
+  <div class="part">开始</div>
+  <div class="cards">
+    <a class="card" href="ch00.html"><span class="n">00</span><h4>导读与全书地图</h4><p>这本 2009 年的书为什么今天仍值得读、本讲义怎么读、什么变了什么没变</p></a>
+  </div>
+  <div class="part">第一部分 · 原理</div>
+  <div class="cards">
+    <a class="card" href="ch01.html"><span class="n">01</span><h4>依赖注入到底解决什么</h4><p>手工构造 → 工厂 → 服务定位器 → 注入器，四步演进与各自的死穴</p></a>
+    <a class="card" href="ch02.html"><span class="n">02</span><h4>动手：注入器与键</h4><p>bootstrap 时机、五种配置方式、字符串键/类型键/组合键的取舍</p></a>
+    <a class="card" href="ch03.html"><span class="n">03</span><h4>注入方式的取舍</h4><p>构造器 vs setter、构造器金字塔、循环引用、Provider / Assisted / Builder</p></a>
+    <a class="card" href="ch04.html"><span class="n">04</span><h4>模块化与可测试性</h4><p>紧耦合的真实代价、面向契约编程、单元测试与集成测试的分工</p></a>
+  </div>
+  <div class="part">第二部分 · 状态与行为</div>
+  <div class="cards">
+    <a class="card" href="ch05.html"><span class="n">05</span><h4>作用域：状态的容器</h4><p>no scope / singleton / request / session，以及"单例反模式"为何是反模式</p></a>
+    <a class="card" href="ch06.html"><span class="n">06</span><h4>自定义作用域与陷阱</h4><p>手写事务作用域，以及 scope-widening 引发的三类事故</p></a>
+    <a class="card" href="ch07.html"><span class="n">07</span><h4>对象生命周期</h4><p>构造/终结、领域相关的生命周期、析构反模式、后处理与多播</p></a>
+    <a class="card" href="ch08.html"><span class="n">08</span><h4>拦截、代理与 AOP</h4><p>代理原理、事务与安全的声明式实现、代理拦不到的五类成员</p></a>
+  </div>
+  <div class="part">第三部分 · 工程</div>
+  <div class="cards">
+    <a class="card" href="ch09.html"><span class="n">09</span><h4>并发、可见性与设计</h4><p>安全发布、五道不可变性谜题、同步 vs 并发、包级封装</p></a>
+    <a class="card" href="ch10.html"><span class="n">10</span><h4>与第三方框架集成</h4><p>刚性配置反模式、脆弱基类、程序化配置为何是正解</p></a>
+    <a class="card" href="ch11.html"><span class="n">11</span><h4>实战：Crosstalk</h4><p>一个微博客的完整分层，把前十章的模式串起来</p></a>
+  </div>
+  <div class="part">附录</div>
+  <div class="cards">
+    <a class="card" href="appendix-a.html"><span class="n">A</span><h4>2009 → 2026 迁移总表</h4><p>读书时常驻脑中的替换表：javax→jakarta、XML→Java 配置、停更库的替代品，以及被推翻的结论</p></a>
+    <a class="card" href="appendix-b.html"><span class="n">B</span><h4>其他容器与术语表</h4><p>Butterfly Container 与 SmartyPants 的 DSL 配置思路，外加全书术语速查</p></a>
+  </div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

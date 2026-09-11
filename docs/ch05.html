@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作用域：状态的容器 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a class="on" aria-current="page" href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch5">
+  <p class="eyebrow">第 5 章</p>
+  <h2 class="title">作用域：状态的容器</h2>
+  <p class="lede">这是让注入器区别于服务定位器的那个特性。<strong>作用域是一个键所对应的实例保持同一的时间段。</strong>把状态的归属声明出来交给容器管理，业务代码就可以对"当前是谁的请求"这件事一无所知——而这正是它该有的样子。</p>
+  <ul class="chips">
+    <li>no scope / prototype</li>
+    <li>singleton scope</li>
+    <li>绑定的是键，不是类</li>
+    <li>单例反模式</li>
+    <li>request / session</li>
+    <li>guice-servlet</li>
+  </ul>
+
+  <h3><span class="sec">5.1</span>牙膏的比喻</h3>
+  <p>作者用一家人刷牙来定义作用域，这个比喻好用到值得原样引进：</p>
+<pre><code>family.give("Joanie", injector.getInstance(Toothpaste.class));
+family.give("Jackie", injector.getInstance(Toothpaste.class));
+family.give("Sachin", injector.getInstance(Toothpaste.class));</code></pre>
+  <p><strong>代码一个字都不用改</strong>，但语义完全取决于 <code>Toothpaste</code> 被绑到什么作用域：</p>
+  <ul>
+    <li><strong>单例作用域</strong> = 全家共用一个浴室、一支牙膏。Sachin 最后刷，可能已经没牙膏了。</li>
+    <li><strong>无作用域</strong> = 一人一个浴室、一支新牙膏。谁都不会被挤掉。</li>
+  </ul>
+  <p>这就是作用域的全部价值：<strong>同样的调用，不同的状态语义，而调用方不知情。</strong></p>
+  <p>它带来四个好处：让注入器管理对象的潜在状态；确保服务按需拿到新的依赖；按上下文隐式隔离状态；<strong>减少业务代码里"状态感知"的逻辑</strong>——这一条最重要，它让代码好测也好推理。</p>
+
+  <h3><span class="sec">5.2</span>无作用域：一次一个新的</h3>
+  <p>作者在这里做了一个很细的辨析。无作用域<strong>不对应任何概念上的上下文</strong>：如果 Sachin 刷两次牙，就会造出四支牙膏，而"三个浴室"的模型里只该有三支。所以严格说，</p>
+  <div class="box note">
+    <span class="tag">精确定义</span>
+    <p>无作用域的含义是：<strong>注入器每次查找这个键，都构造并接线一个全新实例。</strong>没有任何上下文承诺。硬要说，它是一个"上下文完全绑定在引用者身上的、一瞬间的作用域"。</p>
+  </div>
+  <p>命名差异：Guice / PicoContainer 叫它<strong>默认作用域 / 无作用域</strong>；Spring 叫 <code>prototype</code>（键是"创建新对象的模板"）。</p>
+
+  <h3><span class="sec">5.3</span>单例作用域</h3>
+  <p><strong>单例的上下文就是注入器本身。</strong>一个注入器一个实例。注意这句话的限定语——</p>
+  <div class="box trap">
+    <span class="tag">⚠ 最常见的误解</span>
+    <p>很多人以为单例意味着"整个应用一个实例"。<strong>在 DI 里不是</strong>。同一个应用里可以有多个注入器，每个注入器持有自己的一份单例。PicoContainer 干脆放弃了 singleton 这个词，改叫 <em>cache scoping</em>。</p>
+  </div>
+
+  <h4>什么该是单例</h4>
+  <ul>
+    <li><strong>客户的汇聚点</strong>：数据库连接池——所有要连库的服务都要经过它。</li>
+    <li><strong>无状态服务</strong>：业务 API（<code>PersonnelManager</code>、<code>SalaryManager</code>）本身没有状态，只有不可变的数据访问依赖。此时单例比无作用域更优：可以启动时预建（省掉运行时构造开销）、调试时只有一个引用点、<strong>内存占用是常数而非线性</strong>。</li>
+  </ul>
+  <p>什么<strong>不</strong>该只因为"贵"就设为单例——这一段作者写得很克制，值得抄下来：</p>
+  <div class="box note">
+    <span class="tag">别为了性能而单例</span>
+    <p>对象图大、依赖慢速外部资源、构造后要做昂贵计算——<strong>这些本身都不构成理由</strong>。该问的是上下文问题。数据库连接池设计上就该长期持有 → 单例合理。但一个 TCP socket，虽然建立昂贵，如果用户可能登出再登入到另一台服务器，那就是<strong>新的上下文</strong>，必须新实例。</p>
+    <p>"在没有看到明确的性能短板之前，别急着把对象优化成单例。这句话你可以在每次开始猜测和担心性能时对自己重复一遍。"</p>
+    <p><strong>单例的试金石：这个对象是否应该和注入器活得一样久？</strong></p>
+  </div>
+
+  <h4>关键：绑定的是「键」，不是「类」或「对象」</h4>
+  <p>这是本章技术上最容易搞错的地方。作者用监控摄像头举例：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 840 300" role="img" aria-label="作用域绑定在键上：同一个 SimpleCamera 类通过两个不同的键得到不同实例，而一个单例键的四个注入点共享同一实例" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a9" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+
+      <text x="16" y="20" font-size="10.5" opacity=".65">无作用域的两个键 —— 同一个实现类，四个不同实例</text>
+
+      <rect x="16" y="34" width="188" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="110" y="52" text-anchor="middle" font-size="10">[Camera, @Basement]</text>
+      <text x="110" y="68" text-anchor="middle" font-size="8.5" opacity=".6">no scope</text>
+      <rect x="16" y="88" width="188" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="110" y="106" text-anchor="middle" font-size="10">[Camera, @Penthouse]</text>
+      <text x="110" y="122" text-anchor="middle" font-size="8.5" opacity=".6">no scope</text>
+
+      <line x1="206" y1="46" x2="252" y2="34" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <line x1="206" y1="64" x2="252" y2="76" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <line x1="206" y1="100" x2="252" y2="118" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <line x1="206" y1="118" x2="252" y2="160" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+
+      <rect x="256" y="18" width="120" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="316" y="39" text-anchor="middle" font-size="9.5">camera1 · 新实例</text>
+      <rect x="256" y="60" width="120" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="316" y="81" text-anchor="middle" font-size="9.5">camera2 · 新实例</text>
+      <rect x="256" y="102" width="120" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="316" y="123" text-anchor="middle" font-size="9.5">camera3 · 新实例</text>
+      <rect x="256" y="144" width="120" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".8"/>
+      <text x="316" y="165" text-anchor="middle" font-size="9.5">camera4 · 新实例</text>
+
+      <text x="392" y="100" font-size="9.5" fill="#8E2A26">同一个键的两个注入点</text>
+      <text x="392" y="116" font-size="9.5" fill="#8E2A26">也拿到不同实例</text>
+
+      <line x1="16" y1="200" x2="824" y2="200" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="16" y="224" font-size="10.5" fill="#A94A16">单例作用域的一个键 —— 四个注入点共享一个实例</text>
+
+      <rect x="16" y="238" width="188" height="42" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="110" y="256" text-anchor="middle" font-size="10" fill="#A94A16">[MasterTerminal]</text>
+      <text x="110" y="272" text-anchor="middle" font-size="8.5" fill="#A94A16" opacity=".8">@Singleton</text>
+
+      <line x1="206" y1="259" x2="252" y2="259" stroke="#A94A16" stroke-width="1.3" marker-end="url(#a9)"/>
+      <rect x="256" y="240" width="140" height="38" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="326" y="264" text-anchor="middle" font-size="10" fill="#A94A16">唯一实例</text>
+
+      <line x1="398" y1="248" x2="450" y2="228" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <line x1="398" y1="255" x2="450" y2="248" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <line x1="398" y1="263" x2="450" y2="270" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <line x1="398" y1="270" x2="450" y2="290" stroke="currentColor" stroke-width="1.1" marker-end="url(#a9)"/>
+      <text x="460" y="232" font-size="9.5">terminal1</text>
+      <text x="460" y="252" font-size="9.5">terminal2</text>
+      <text x="460" y="274" font-size="9.5">terminal3</text>
+      <text x="460" y="294" font-size="9.5">terminal4</text>
+
+      <text x="560" y="252" font-size="9.5" opacity=".7">再加一个 [MasterTerminal, @Basement]</text>
+      <text x="560" y="268" font-size="9.5" opacity=".7">键，就是<tspan font-weight="500">另一个</tspan>单例实例</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>作用域挂在键上。</b>上半部分：<code>BasementFloor(＠Basement Camera c1, ＠Basement Camera c2)</code> 里的 c1 和 c2 是<b>两个不同对象</b>——同一个键，但键是无作用域的。下半部分：单例键的所有注入点共享一个实例；换一个键（哪怕还是同一个类）就是另一个实例。</figcaption>
+  </figure>
+
+  <h3><span class="sec">5.4</span>单例作用域 vs 单例「反模式」</h3>
+  <p>这两个东西同名，但作者对后者态度极其激烈。先看反模式长什么样：</p>
+<pre><code>public class Console {
+    private static Console instance = null;
+
+    public static synchronized Console getInstance() {
+        if (null == instance) instance = new Console();
+        return instance;
+    }
+}</code></pre>
+  <p>问题从测试开始暴露。有个类这样用它：</p>
+<pre><code>public class StockTicker {
+    private Console console = <b>Console.getInstance()</b>;   <i>// 没有缝隙塞 mock</i>
+}</code></pre>
+  <p>为了能测，你被迫给 <code>Console</code> 加一个 <code>setInstance()</code>。然后测试写成这样：</p>
+<pre><code>@Test public void printToConsole() {
+    Console previous = Console.getInstance();
+    try {
+        Console.setInstance(new MockConsole());
+        ...
+    } finally {
+        Console.setInstance(previous);      <i>// 忘了就污染后面所有测试</i>
+    }
+}</code></pre>
+  <p>作者的评语："<strong>为了让测试跑起来而被迫增加代码或基础设施逻辑的模式，是好设计的糟糕仆人。</strong>"更糟的是——<strong>并行测试下这段代码完全失效</strong>，线程互相踩踏。<em>这本该是一票否决。</em></p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 800 210" role="img" aria-label="单例反模式的实例位于注入器之外，被多个注入器共享；单例作用域的实例位于注入器内部，每个注入器一份" xmlns="http://www.w3.org/2000/svg">
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10.5" fill="#8E2A26">单例「反模式」·静态字段</text>
+      <rect x="16" y="34" width="340" height="140" rx="3" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/>
+      <text x="26" y="52" font-size="9" opacity=".55">应用</text>
+
+      <rect x="36" y="66" width="110" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="91" y="90" text-anchor="middle" font-size="10">注入器 A</text>
+      <rect x="36" y="118" width="110" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="91" y="142" text-anchor="middle" font-size="10">注入器 B</text>
+
+      <rect x="216" y="92" width="118" height="40" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.5"/>
+      <text x="275" y="110" text-anchor="middle" font-size="10" fill="#8E2A26">static instance</text>
+      <text x="275" y="125" text-anchor="middle" font-size="8.5" fill="#8E2A26">在注入器之外</text>
+
+      <line x1="148" y1="88" x2="212" y2="104" stroke="#8E2A26" stroke-width="1.2"/>
+      <line x1="148" y1="136" x2="212" y2="120" stroke="#8E2A26" stroke-width="1.2"/>
+
+      <text x="186" y="196" text-anchor="middle" font-size="9.5" fill="#8E2A26">跨注入器共享 · 不可 mock · 无法换作用域 · 拿不到生命周期和拦截</text>
+
+      <line x1="392" y1="16" x2="392" y2="200" stroke="currentColor" stroke-width="1" opacity=".25"/>
+
+      <text x="420" y="20" font-size="10.5" fill="#0C6660">单例「作用域」</text>
+      <rect x="420" y="34" width="340" height="140" rx="3" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" opacity=".6"/>
+      <text x="430" y="52" font-size="9" opacity=".55">应用</text>
+
+      <rect x="440" y="66" width="140" height="38" rx="3" fill="none" stroke="#0C6660" stroke-width="1.3"/>
+      <text x="510" y="90" text-anchor="middle" font-size="10" fill="#0C6660">注入器 A</text>
+      <rect x="596" y="66" width="140" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="666" y="90" text-anchor="middle" font-size="10">实例 A</text>
+      <line x1="582" y1="85" x2="592" y2="85" stroke="#0C6660" stroke-width="1.2"/>
+
+      <rect x="440" y="118" width="140" height="38" rx="3" fill="none" stroke="#0C6660" stroke-width="1.3"/>
+      <text x="510" y="142" text-anchor="middle" font-size="10" fill="#0C6660">注入器 B</text>
+      <rect x="596" y="118" width="140" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1.1"/>
+      <text x="666" y="142" text-anchor="middle" font-size="10">实例 B</text>
+      <line x1="582" y1="137" x2="592" y2="137" stroke="#0C6660" stroke-width="1.2"/>
+
+      <text x="590" y="196" text-anchor="middle" font-size="9.5" fill="#0C6660">改一行配置就能换作用域 · 可 mock · 享受生命周期与拦截</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>位置决定一切。</b>反模式的实例活在注入器<b>外面</b>，于是它逃出了容器能提供的所有能力：作用域切换、生命周期回调、拦截、mock 替换。作者：<b>"单例对象坏，单例作用域好。"</b></figcaption>
+  </figure>
+
+  <h3><span class="sec">5.5</span>Web 作用域：请求与会话</h3>
+  <p>单例和无作用域是"通用"作用域。还有一类作用域只在特定问题域里有意义——作者叫它们<em>领域相关作用域</em>。电影院里，每一场正在放映的电影是一个上下文；观众在这个上下文里存在。Web 应用则有两个几乎所有人都要用的领域作用域。</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 880 320" role="img" aria-label="四种作用域在注入器生命周期中的时间线对比：单例贯穿全程，会话跨多个请求，请求短暂，无作用域瞬时" xmlns="http://www.w3.org/2000/svg">
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="18" font-size="10" opacity=".6">注入器生命周期 →</text>
+      <line x1="120" y1="30" x2="856" y2="30" stroke="currentColor" stroke-width="1" opacity=".3"/>
+      <text x="128" y="24" font-size="9" opacity=".55">启动</text>
+      <text x="850" y="24" font-size="9" opacity=".55" text-anchor="end">关闭</text>
+
+      <text x="16" y="66" font-size="10.5" fill="#A94A16">singleton</text>
+      <rect x="120" y="52" width="736" height="22" rx="2" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="488" y="67" text-anchor="middle" font-size="9.5" fill="#A94A16">一个实例，从头活到尾</text>
+
+      <text x="16" y="112" font-size="10.5">session</text>
+      <rect x="164" y="98" width="300" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="314" y="113" text-anchor="middle" font-size="9.5">用户甲的会话 · U1</text>
+      <rect x="500" y="98" width="150" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="575" y="113" text-anchor="middle" font-size="9.5">用户乙 · U2</text>
+      <rect x="686" y="98" width="150" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="761" y="113" text-anchor="middle" font-size="9.5">乙重新登录 · 新 U2</text>
+      <text x="164" y="136" font-size="9" opacity=".6">登录</text>
+      <text x="464" y="136" font-size="9" opacity=".6" text-anchor="end">登出</text>
+
+      <text x="16" y="176" font-size="10.5">request</text>
+      <rect x="176" y="162" width="72" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="212" y="177" text-anchor="middle" font-size="9">R1</text>
+      <rect x="266" y="162" width="72" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="302" y="177" text-anchor="middle" font-size="9">R2</text>
+      <rect x="356" y="162" width="72" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="392" y="177" text-anchor="middle" font-size="9">R3</text>
+      <rect x="512" y="162" width="72" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="548" y="177" text-anchor="middle" font-size="9">R4</text>
+      <rect x="700" y="162" width="72" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="736" y="177" text-anchor="middle" font-size="9">R5</text>
+      <text x="302" y="200" font-size="9" opacity=".6">R1–R3 属于同一会话，共享同一个 session 实例</text>
+
+      <text x="16" y="240" font-size="10.5" opacity=".8">no scope</text>
+      <line x1="196" y1="226" x2="196" y2="248" stroke="currentColor" stroke-width="2"/>
+      <line x1="216" y1="226" x2="216" y2="248" stroke="currentColor" stroke-width="2"/>
+      <line x1="286" y1="226" x2="286" y2="248" stroke="currentColor" stroke-width="2"/>
+      <line x1="376" y1="226" x2="376" y2="248" stroke="currentColor" stroke-width="2"/>
+      <line x1="396" y1="226" x2="396" y2="248" stroke="currentColor" stroke-width="2"/>
+      <line x1="532" y1="226" x2="532" y2="248" stroke="currentColor" stroke-width="2"/>
+      <line x1="720" y1="226" x2="720" y2="248" stroke="currentColor" stroke-width="2"/>
+      <text x="302" y="266" font-size="9" opacity=".6">每次注入一个新实例，没有跨调用的承诺</text>
+
+      <line x1="16" y1="288" x2="864" y2="288" stroke="currentColor" stroke-width="1" opacity=".25"/>
+      <text x="440" y="310" text-anchor="middle" font-size="9.5" opacity=".65">越往下活得越短。把长的注入进短的没问题；<tspan fill="#8E2A26">把短的注入进长的 = 第 6 章的 scope-widening 事故</tspan></text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>一张图记住整章。</b>注意会话那一行：乙登出再登入，得到的是<b>全新的实例</b>，前后状态完全隔离——这正是它区别于单例的地方。而底部那句话是第 6 章的全部内容。</figcaption>
+  </figure>
+
+  <h4>请求作用域怎么改变代码</h4>
+  <p>作者用一个漫画书商店演示。最初 <code>ComicSearch</code> 什么都自己干：</p>
+<pre><code>public HTML searchForComics(String criteria, <b>String username</b>) {
+    user.signIn(username);                                    <i>// 认证逻辑</i>
+    List&lt;Comic&gt; suggestions = user.getItemsOfInterest();
+    List&lt;Comic&gt; results = comicAccess.searchNoPriorPurchases(criteria, username);
+    ...
+}</code></pre>
+  <p>把 <code>UserContext</code> 设为请求作用域、把登录动作移进一个 filter 之后：</p>
+<pre><code>@RequestScoped
+public class ComicSearch {
+    private final UserContext user;         <i>// 容器保证这是「当前请求的」那个</i>
+
+    public HTML searchForComics(String criteria) {            <i>// username 参数消失了</i>
+        List&lt;Comic&gt; suggestions = user.getItemsOfInterest();
+        List&lt;Comic&gt; results = user.searchComics(criteria);
+        ...
+    }
+}</code></pre>
+  <p><strong>业务方法回到了纯业务</strong>。认证逻辑只写一次，在 filter 里：</p>
+<pre><code>@Singleton
+public class UserFilter implements Filter {
+    private final <b>Provider&lt;UserContext&gt;</b> currentUser;    <i>// 注意是 Provider！</i>
+
+    public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) {
+        currentUser.get().signIn(...);
+        chain.doFilter(req, res);
+    }
+}</code></pre>
+  <div class="box trap">
+    <span class="tag">⚠ 这里为什么必须用 Provider</span>
+    <p><code>UserFilter</code> 是单例，<code>UserContext</code> 是请求作用域。<strong>如果直接注入 <code>UserContext</code>，单例会一直攥着第一个请求的那个实例不放</strong>——后面所有用户都会被当成第一个用户。这就是 scope-widening injection，第 6 章的主角。<code>Provider</code> 让每次 <code>get()</code> 都去问容器要"当前上下文的那一个"。</p>
+  </div>
+
+  <h4>绑定写法</h4>
+  <div class="split">
+    <div class="good"><h5>Guice + guice-servlet</h5>
+<pre><code>bind(ComicAccess.class)
+    .to(ComicAccessImpl.class)
+    .in(Singleton.class);
+bind(UserContext.class).in(SessionScoped.class);
+bind(ComicSearch.class).in(RequestScoped.class);
+
+<i>// 或者直接注解在类上</i>
+@SessionScoped
+public class UserContext { ... }</code></pre>
+    </div>
+    <div class="good"><h5>Spring 2.5（当年）</h5>
+<pre><code>&lt;bean id="data.comics"
+      class="ComicAccessImpl" scope="singleton"/&gt;
+&lt;bean id="web.user"
+      class="UserContext"  <b>scope="session"</b>/&gt;
+&lt;bean id="web.comicSearch"
+      class="ComicSearch"  <b>scope="request"</b>/&gt;</code></pre>
+    </div>
+  </div>
+
+  <h4>会话作用域的价值：省掉重复工作</h4>
+  <p>把 <code>UserContext</code> 从请求作用域升到会话作用域，立刻有两个收益：登录只需在会话开始时做一次，而不是每个请求做一次；而且可以安全地做<strong>备忘缓存</strong>：</p>
+<pre><code>public class UserContext {
+    private List&lt;Comic&gt; itemsOfInterest;              <i>// 备忘字段</i>
+
+    public List&lt;Comic&gt; getItemsOfInterest() {
+        if (null == itemsOfInterest) { ... }          <i>// 一个会话内只算一次</i>
+        return itemsOfInterest;
+    }
+}</code></pre>
+  <p>每个用户有自己的备忘，互不干扰——因为它们在各自的会话作用域实例里。</p>
+
+  <div class="box trap">
+    <span class="tag">⚠ 使用 Web 作用域的四条注意</span>
+    <ul>
+      <li>一个请求通常独占一个线程 → 请求作用域对象<strong>一般不需要线程安全</strong>，也一般<strong>不是</strong>线程安全的；</li>
+      <li>但<strong>会话作用域不一样</strong>：同一个用户的多个并发请求会同时命中同一个会话实例；</li>
+      <li>集成层通常把作用域实例缓存在 <code>ThreadLocal</code> 里 → 请求结束<strong>必须清理</strong>；</li>
+      <li>少数情况下服务器会用多个线程服务一个请求（长轮询/异步），此时 <code>ThreadLocal</code> 的假设会崩。</li>
+    </ul>
+    <p><em>最后一条在 2009 年是"少数情况"，今天是主流场景之一。见下方对照。</em></p>
+  </div>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+
+    <h4 style="margin-top:2px">① 作用域清单</h4>
+    <div class="tw"><table>
+      <thead><tr><th>语义</th><th>Spring 6/7</th><th>Guice 7</th><th>Jakarta CDI 4</th></tr></thead>
+      <tbody>
+        <tr><td>每次新建</td><td><code>@Scope("prototype")</code></td><td>默认（无注解）</td><td><code>@Dependent</code></td></tr>
+        <tr><td>容器唯一</td><td>默认 / <code>@Scope("singleton")</code></td><td><code>@Singleton</code></td><td><code>@ApplicationScoped</code></td></tr>
+        <tr><td>每请求</td><td><code>@RequestScope</code></td><td><code>@RequestScoped</code>（guice-servlet）</td><td><code>@RequestScoped</code></td></tr>
+        <tr><td>每会话</td><td><code>@SessionScope</code></td><td><code>@SessionScoped</code></td><td><code>@SessionScoped</code></td></tr>
+        <tr><td>跨请求的"对话"</td><td>需自建</td><td>需自建</td><td><code>@ConversationScoped</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>注意 Spring 的默认作用域是 <strong>singleton</strong>，Guice 的默认是 <strong>无作用域</strong>。这个差异从 2009 年一直保持到今天，是两个生态最容易互相踩坑的地方之一。</p>
+
+    <h4>② 那个 <code>Provider</code> 技巧，Spring 做成了声明式</h4>
+    <p>书里让 <code>UserFilter</code> 注入 <code>Provider&lt;UserContext&gt;</code>。Spring 提供了更省事的方案——<strong>作用域代理</strong>：</p>
+<pre><code>@Component
+@SessionScope(proxyMode = ScopedProxyMode.TARGET_CLASS)     <i>// 或直接用 @SessionScope，默认就带代理</i>
+public class UserContext { ... }
+
+@Service                                    <i>// 单例</i>
+public class ComicService {
+    private final UserContext user;         <i>// 注入的其实是一个代理</i>
+    ComicService(UserContext user) { this.user = user; }
+
+    void search() { user.getItemsOfInterest(); }
+    <i>// ↑ 代理在每次方法调用时才去查「当前会话的真实实例」</i>
+}</code></pre>
+    <p>代价是要用 CGLIB 生成子类 —— 于是第 8 章那些"代理拦不到 final/private 方法"的限制会原封不动地找上门。<strong>纯 <code>ObjectProvider</code> 写法没有这个副作用</strong>，在能选的时候更干净。</p>
+
+    <h4>③ 最大的变化：请求作用域在响应式/异步里失效</h4>
+    <p>原书那条"少数情况下服务器会用多个线程服务一个请求"的注脚，今天成了一整类架构：</p>
+    <ul>
+      <li><strong>Spring WebFlux / 响应式栈</strong>：没有 thread-per-request，一个请求会在多个线程上流转。<code>@RequestScope</code> 和 <code>RequestContextHolder</code> 基本不可用，取而代之的是把上下文放进 <strong>Reactor Context</strong>（<code>contextWrite</code> / <code>deferContextual</code>）——它沿着<em>数据流</em>传播，而不是沿着线程。</li>
+      <li><strong>Kotlin 协程</strong>：用 <code>CoroutineContext</code>，同理。</li>
+      <li><strong>虚拟线程</strong>（Java 21+，Spring Boot 3.2 起可一键开启）：thread-per-request 模型<em>回来了</em>，所以 <code>@RequestScope</code> 又能用了。但 <code>ThreadLocal</code> 的成本模型变了——虚拟线程是百万级、朝生暮死的，为每个线程挂一份 <code>ThreadLocal</code> map 不再划算。</li>
+    </ul>
+
+    <h4>④ <code>ScopedValue</code>：为作用域而生的新语言特性</h4>
+    <p>Java 25（2025-09 LTS）正式发布的 <strong>JEP 506 Scoped Values</strong>，几乎就是给这一章量身定做的：</p>
+<pre><code>private static final ScopedValue&lt;UserContext&gt; CURRENT_USER = ScopedValue.newInstance();
+
+<i>// 在 filter 里绑定，作用域的边界由代码块的词法结构决定</i>
+ScopedValue.where(CURRENT_USER, new UserContext(username))
+           .run(() -&gt; chain.doFilter(req, res));
+
+<i>// 下游任意深度读取，包括结构化并发派生出的子线程</i>
+UserContext user = CURRENT_USER.get();</code></pre>
+    <div class="tw compact"><table>
+      <thead><tr><th></th><th><code>ThreadLocal</code>（书中的做法）</th><th><code>ScopedValue</code></th></tr></thead>
+      <tbody>
+        <tr><td>可变性</td><td>可随时改写</td><td><strong>不可变</strong></td></tr>
+        <tr><td>作用域边界</td><td>靠你记得调 <code>remove()</code></td><td>由代码块决定，<strong>自动结束</strong></td></tr>
+        <tr><td>忘记清理</td><td>内存泄漏（线程池场景尤其严重）</td><td>不可能发生</td></tr>
+        <tr><td>子线程继承</td><td><code>InheritableThreadLocal</code>，复制开销大</td><td>结构化并发下天然可见，零复制</td></tr>
+        <tr><td>百万虚拟线程</td><td>开销显著</td><td>为此设计</td></tr>
+      </tbody>
+    </table></div>
+    <p>第 6 章会手写一个基于 <code>ThreadLocal</code> 的事务作用域——那份代码在今天可以、也应该用 <code>ScopedValue</code> 重写。<em>注意 JDK 团队明确说了不打算废弃 <code>ThreadLocal</code>，两者会长期共存。</em></p>
+
+    <h4>⑤ 单例反模式：结论没变，但有了新的犯法姿势</h4>
+    <p>手写 <code>getInstance()</code> 今天很少见了。但等价物层出不穷：Kotlin 的 <code>object</code> 单例、Java 的静态工具类持有状态、以及最常见的——<strong>把 Spring 容器塞进静态字段</strong>（<code>ApplicationContextHolder.getBean(...)</code>）。作者对 <code>Console.getInstance()</code> 的全部批评，逐字适用于后者。</p>
+
+    <h4>⑥ Spring 侧的作用域配置</h4>
+    <p>原书要在 <code>web.xml</code> 里注册 <code>RequestContextListener</code>。Spring Boot 把这一步自动化了，你只要加注解就行。<code>guice-servlet</code> 也还在，但 Guice 7 起用的是 <code>jakarta.servlet</code>。</p>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c5/</code> —— <code>ComicSearch</code>、<code>ComicAccess</code>/<code>ComicAccessImpl</code>、<code>UserContext</code>、<code>UserFilter</code>、<code>ComicStoreModule</code>、<code>Comic</code>、<code>HTML</code>；对应配置 <code>prasanna/comics.xml</code>、<code>prasanna/web.xml</code>、<code>prasanna/webapp/WEB-INF/comic-store.xml</code>。牙膏和摄像头的例子在 <code>prasanna/src/screen/</code> 与根目录。</p>
+  </div>
+
+  <div class="pager"><a href="ch04.html"><span>上一章</span>04 · 模块化与可测试性</a><a class="next" href="ch06.html"><span>下一章</span>06 · 自定义作用域与陷阱</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

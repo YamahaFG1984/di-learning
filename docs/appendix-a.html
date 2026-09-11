@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2009 → 2026 迁移总表 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a class="on" aria-current="page" href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="modern">
+  <p class="eyebrow">附录 A</p>
+  <h2 class="title">2009 → 2026 迁移总表</h2>
+  <p class="lede">读这本书时，脑子里需要常驻的一张替换表。左边是书里写的，右边是今天的对应物。<strong>凡是标为「概念未变」的，说明那部分论证今天仍然成立，只是 API 换了皮。</strong></p>
+  <ul class="chips">
+    <li>命名空间迁移</li>
+    <li>库存活状况</li>
+    <li>配置方式演进</li>
+    <li>语言特性接管</li>
+    <li>版本速查</li>
+  </ul>
+
+  <h3><span class="sec">A.1</span>最重要的一件事：<code>javax</code> → <code>jakarta</code></h3>
+  <div class="box trap">
+    <span class="tag">⚠ 这会影响你读到的每一段代码</span>
+    <p>2017 年 Oracle 把 Java EE 捐给 Eclipse 基金会，但<strong>不允许继续使用 <code>javax</code> 包名</strong>。于是 Jakarta EE 9（2020）做了一次"大爆炸"式重命名：所有 <code>javax.*</code> 一律改为 <code>jakarta.*</code>，<strong>没有中间过渡方案</strong>。</p>
+  </div>
+  <div class="tw"><table>
+    <thead><tr><th>书里的 import</th><th>今天的 import</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>javax.inject.Inject</code></td><td><code>jakarta.inject.Inject</code></td><td>JSR-330 标准注入注解</td></tr>
+      <tr><td><code>javax.inject.Provider</code></td><td><code>jakarta.inject.Provider</code></td><td>第 3 章的 Provider 模式</td></tr>
+      <tr><td><code>javax.servlet.*</code></td><td><code>jakarta.servlet.*</code></td><td>第 5、7、11 章的 Web 层</td></tr>
+      <tr><td><code>javax.persistence.*</code></td><td><code>jakarta.persistence.*</code></td><td>第 8、11 章的 JPA</td></tr>
+      <tr><td><code>javax.validation.*</code></td><td><code>jakarta.validation.*</code></td><td>第 10 章的 JSR-303</td></tr>
+      <tr><td><code>javax.annotation.PostConstruct</code></td><td><code>jakarta.annotation.PostConstruct</code></td><td>第 7 章；<strong>Java 11 起已从 JDK 移除，需单独加依赖</strong></td></tr>
+      <tr><td><code>com.google.inject.Inject</code></td><td>仍在，但优先用 <code>jakarta.inject.Inject</code></td><td>Guice 7 只认 jakarta 命名空间</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><span class="sec">A.2</span>书中提到的库：生死簿</h3>
+  <div class="tw"><table>
+    <thead><tr><th>库</th><th>书中角色</th><th>2026</th><th>替代品</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Spring Framework</strong></td><td>主力示例，XML 配置</td><td style="color:var(--teal)">7.0.x · 活跃</td><td>—（但 XML 已淘汰）</td></tr>
+      <tr><td><strong>Google Guice</strong></td><td>主力示例，注解 + Module</td><td style="color:var(--teal)">7.0.0 · 维护中</td><td>—</td></tr>
+      <tr><td>guice-servlet</td><td>第 5、11 章的 Web 集成</td><td style="color:var(--teal)">随 Guice 7 更新到 jakarta</td><td>—</td></tr>
+      <tr><td><strong>warp-persist</strong></td><td>第 8、11 章的事务</td><td style="color:var(--rust)">停更</td><td><code>guice-persist</code> / Spring Data</td></tr>
+      <tr><td><strong>Google Sitebricks</strong></td><td>第 11 章的 Web 框架</td><td style="color:var(--rust)">停更</td><td>Spring MVC / Micronaut / Quarkus</td></tr>
+      <tr><td><strong>PicoContainer</strong></td><td>第 2、5、7 章的对比对象</td><td style="color:var(--rust)">停更</td><td>Guice / Spring / Dagger</td></tr>
+      <tr><td>Apache HiveMind</td><td>第 1 章的历史回顾</td><td style="color:var(--rust)">已归档</td><td>—</td></tr>
+      <tr><td>Apache Avalon / Excalibur</td><td>接口注入的唯一实现者</td><td style="color:var(--rust)">早已消亡</td><td>—</td></tr>
+      <tr><td>CGLib</td><td>第 8 章的类代理</td><td style="color:var(--copper)">被 Spring 重打包内嵌</td><td>ByteBuddy（生态主流）</td></tr>
+      <tr><td>AopAlliance</td><td>第 8 章的拦截器接口</td><td style="color:var(--copper)">被重打包进 spring-aop；Guice 仍用</td><td>—</td></tr>
+      <tr><td>Hibernate</td><td>第 8、11 章的 ORM</td><td style="color:var(--teal)">7.x · 活跃</td><td>—</td></tr>
+      <tr><td>Spring Security（Acegi）</td><td>第 8 章的方法安全</td><td style="color:var(--teal)">6.x/7.x · 活跃</td><td>—（但 XML 配置已移除）</td></tr>
+      <tr><td>EasyMock / JMock</td><td>第 4 章的 mock</td><td style="color:var(--copper)">边缘化</td><td>Mockito 5</td></tr>
+      <tr><td>TestNG</td><td>第 4、5 章的测试框架</td><td style="color:var(--copper)">小众</td><td>JUnit 5</td></tr>
+      <tr><td>jcip-annotations</td><td>第 6、9 章的线程安全标注</td><td style="color:var(--copper)">基本不用</td><td>Error Prone <code>@Immutable</code> · JSpecify</td></tr>
+      <tr><td>OSCache</td><td>第 10 章的反面教材</td><td style="color:var(--rust)">停更</td><td>Caffeine · Redis</td></tr>
+      <tr><td>Jetty / HSQLDB</td><td>第 11 章的运行环境</td><td style="color:var(--teal)">Jetty 12 · HSQLDB 仍在</td><td>嵌入式 Tomcat · Testcontainers</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><span class="sec">A.3</span>配置方式的十七年</h3>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 880 240" role="img" aria-label="配置方式的演进：XML 让位给注解与组件扫描，最后一部分回到程序化注册以支持编译期 AOT" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <line x1="40" y1="200" x2="850" y2="200" stroke="currentColor" stroke-width="1" opacity=".35"/>
+      <text x="70" y="220" text-anchor="middle" font-size="9.5" opacity=".6">2003</text>
+      <text x="250" y="220" text-anchor="middle" font-size="9.5" opacity=".6">2009 · 本书</text>
+      <text x="470" y="220" text-anchor="middle" font-size="9.5" opacity=".6">2014 · Boot 1.0</text>
+      <text x="700" y="220" text-anchor="middle" font-size="9.5" opacity=".6">2023–26 · AOT</text>
+      <circle cx="70" cy="200" r="3.5" fill="currentColor"/><circle cx="250" cy="200" r="4.5" fill="#A94A16"/>
+      <circle cx="470" cy="200" r="3.5" fill="currentColor"/><circle cx="700" cy="200" r="3.5" fill="currentColor"/>
+
+      <rect x="26" y="132" width="118" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="85" y="150" text-anchor="middle" font-size="10">XML 为主</text>
+      <text x="85" y="165" text-anchor="middle" font-size="8.5" opacity=".6">字符串键</text>
+      <line x1="85" y1="176" x2="85" y2="194" stroke="currentColor" stroke-width="1" opacity=".5"/>
+
+      <rect x="176" y="106" width="150" height="68" rx="3" fill="none" stroke="#A94A16" stroke-width="1.5"/>
+      <text x="251" y="126" text-anchor="middle" font-size="10" fill="#A94A16">XML + 注解并存</text>
+      <text x="251" y="142" text-anchor="middle" font-size="8.5" fill="#A94A16">@Autowired / @Inject</text>
+      <text x="251" y="158" text-anchor="middle" font-size="8.5" fill="#A94A16">Guice Module</text>
+      <line x1="251" y1="176" x2="251" y2="194" stroke="#A94A16" stroke-width="1.2" opacity=".6"/>
+
+      <rect x="392" y="132" width="156" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="470" y="150" text-anchor="middle" font-size="10">注解 + 组件扫描</text>
+      <text x="470" y="165" text-anchor="middle" font-size="8.5" opacity=".6">XML 退场，约定优先</text>
+      <line x1="470" y1="176" x2="470" y2="194" stroke="currentColor" stroke-width="1" opacity=".5"/>
+
+      <rect x="612" y="106" width="176" height="68" rx="3" fill="none" stroke="#0C6660" stroke-width="1.5"/>
+      <text x="700" y="126" text-anchor="middle" font-size="10" fill="#0C6660">程序化注册 + AOT</text>
+      <text x="700" y="142" text-anchor="middle" font-size="8.5" fill="#0C6660">BeanRegistrar · 编译期 DI</text>
+      <text x="700" y="158" text-anchor="middle" font-size="8.5" fill="#0C6660">Dagger / Micronaut / Quarkus</text>
+      <line x1="700" y1="176" x2="700" y2="194" stroke="#0C6660" stroke-width="1.2" opacity=".6"/>
+
+      <path d="M144 153 Q160 153 172 143" stroke="currentColor" stroke-width="1.1" fill="none" marker-end="url(#f1)"/>
+      <path d="M328 143 Q360 143 388 150" stroke="currentColor" stroke-width="1.1" fill="none" marker-end="url(#f1)"/>
+      <path d="M550 150 Q580 148 608 143" stroke="currentColor" stroke-width="1.1" fill="none" marker-end="url(#f1)"/>
+
+      <path d="M251 100 Q440 40 700 100" stroke="#0C6660" stroke-width="1.3" fill="none" stroke-dasharray="5 4" marker-end="url(#f1)"/>
+      <text x="470" y="56" text-anchor="middle" font-size="9.5" fill="#0C6660">书里的「程序化 API」（PicoContainer 风格）绕了一圈回来了</text>
+      <text x="470" y="74" text-anchor="middle" font-size="9" fill="#0C6660" opacity=".85">理由变了：不是为了简洁，是因为 AOT 需要构建期就能确定所有绑定</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>不是单调的演进，是一个回环。</b>第 2 章列的五种配置方式里，"XML"出局、"注解 + 结构推断"成为主力、而"程序化 API"以 <code>BeanRegistrar</code> 和编译期 DI 的形式强势回归——因为原生镜像和毫秒级启动需要在构建期就知道全部答案。</figcaption>
+  </figure>
+
+  <h3><span class="sec">A.4</span>语言接管了哪些"最佳实践"</h3>
+  <p>书里靠纪律、注释和约定维持的东西，很多已经变成了语法：</p>
+  <div class="tw"><table>
+    <thead><tr><th>书中的建议</th><th>接管它的语言特性</th><th>版本</th><th>相关章节</th></tr></thead>
+    <tbody>
+      <tr><td>字段声明 <code>final</code> + 构造器注入 + 不可变</td><td><code>record</code></td><td>Java 16</td><td>3 · 9</td></tr>
+      <tr><td>契约要写清"没匹配返回什么"</td><td><code>sealed</code> + 模式匹配 + <code>Optional</code></td><td>Java 17 / 21</td><td>4</td></tr>
+      <tr><td>防御性拷贝 + <code>unmodifiableList</code></td><td><code>List.of()</code> / <code>List.copyOf()</code></td><td>Java 9 / 10</td><td>9</td></tr>
+      <tr><td>用 <code>Closeable</code> 表达"该关闭"</td><td>try-with-resources + <code>AutoCloseable</code></td><td>Java 7</td><td>7</td></tr>
+      <tr><td>别用 <code>finalize()</code> 释放资源</td><td><code>Cleaner</code>；<code>finalize()</code> 已标记待移除</td><td>Java 9 / 18</td><td>7</td></tr>
+      <tr><td>自定义作用域用 <code>ThreadLocal</code> + 手动清理</td><td><code>ScopedValue</code></td><td>Java 25</td><td>5 · 6</td></tr>
+      <tr><td>包级私有隐藏实现</td><td>JPMS <code>module-info.java</code>（更强）</td><td>Java 9</td><td>9 · 10</td></tr>
+      <tr><td>组合优于继承（脆弱基类）</td><td><code>sealed</code> 限制子类；<code>record</code> 隐式 final</td><td>Java 17 / 16</td><td>10</td></tr>
+      <tr><td><code>@Immutable</code> 只是文档</td><td>Error Prone <code>@Immutable</code>（编译期检查）</td><td>—</td><td>6 · 9</td></tr>
+      <tr><td>单例必须线程安全</td><td>虚拟线程让它更重要；<code>ReentrantLock</code> 优于 <code>synchronized</code></td><td>Java 21+</td><td>6 · 9</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><span class="sec">A.5</span>结论的存活率</h3>
+  <div class="tw"><table>
+    <thead><tr><th>章</th><th>核心结论</th><th>2026</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>手工构造 / 工厂 / 服务定位器各有死穴；注入器只在入口调用一次</td><td style="color:var(--teal)">完全成立</td></tr>
+      <tr><td>2</td><td>组合键（类型 + 限定注解）优于纯字符串或纯类型</td><td style="color:var(--teal)">完全成立，已标准化为 <code>@Qualifier</code></td></tr>
+      <tr><td>3</td><td>构造器注入优先；setter 只在不得已时用</td><td style="color:var(--teal)">完全成立，已是行业默认</td></tr>
+      <tr><td>3</td><td>循环引用用代理打破</td><td style="color:var(--rust)"><strong>推翻</strong>：Spring Boot 2.6 起默认禁止循环依赖</td></tr>
+      <tr><td>3</td><td>字段注入"实践中价值很小"</td><td style="color:var(--teal)">完全成立，IDE 直接报 warning</td></tr>
+      <tr><td>4</td><td>单元测试里不要启动容器</td><td style="color:var(--teal)">完全成立，测试切片就是为此设计</td></tr>
+      <tr><td>4</td><td>集成测试要贴近生产环境</td><td style="color:var(--teal)">加强：Testcontainers 让"贴近"变成"就是"</td></tr>
+      <tr><td>5</td><td>单例反模式 vs 单例作用域</td><td style="color:var(--teal)">完全成立</td></tr>
+      <tr><td>5</td><td>请求作用域基于 thread-per-request</td><td style="color:var(--copper)">部分失效：响应式栈没有这个前提</td></tr>
+      <tr><td>6</td><td>按问题域设计自定义作用域</td><td style="color:var(--copper)">态度转向保守：优先显式传参</td></tr>
+      <tr><td>6</td><td>scope-widening 的四类事故</td><td style="color:var(--teal)">完全成立，仍是最难查的一类 bug</td></tr>
+      <tr><td>7</td><td>生命周期是领域相关的；析构反模式</td><td style="color:var(--teal)">完全成立</td></tr>
+      <tr><td>7</td><td>多播生命周期</td><td style="color:var(--teal)">进化成应用事件（<code>@EventListener</code>）</td></tr>
+      <tr><td>8</td><td>代理拦不到 static / private / final / 字段</td><td style="color:var(--teal)">完全成立，另加"自调用"一条</td></tr>
+      <tr><td>8</td><td>拦截器顺序需要纵向集成测试</td><td style="color:var(--teal)">成立，另有 <code>@Order</code> 可显式控制</td></tr>
+      <tr><td>9</td><td><code>final</code> 保证安全发布</td><td style="color:var(--teal)">完全成立，虚拟线程时代更重要</td></tr>
+      <tr><td>9</td><td>五道不可变性谜题</td><td style="color:var(--copper)">谜题 1 被 <code>record</code> 消灭，2–5 全部存活</td></tr>
+      <tr><td>9</td><td><code>ConcurrentHashMap</code> 用条带锁</td><td style="color:var(--rust)"><strong>技术细节过时</strong>：Java 8 已改为 CAS + 桶级锁</td></tr>
+      <tr><td>10</td><td>刚性配置反模式</td><td style="color:var(--teal)">成立；<code>@ConfigurationProperties</code> 是标准解</td></tr>
+      <tr><td>10</td><td>框架应提供程序化配置扩展点</td><td style="color:var(--teal)">已成行业默认（各种 <code>Customizer</code>）</td></tr>
+      <tr><td>11</td><td>请求作用域的页面对象</td><td style="color:var(--copper)">转向无状态控制器 + 参数传递</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3><span class="sec">A.6</span>版本速查（2026 年 8 月）</h3>
+  <div class="tw"><table>
+    <thead><tr><th>项目</th><th>版本</th><th>关键点</th></tr></thead>
+    <tbody>
+      <tr><td>Java LTS</td><td><strong>25</strong>（2025-09）</td><td><code>ScopedValue</code> 正式（JEP 506）；下一个 LTS 是 Java 29</td></tr>
+      <tr><td>Java 最新</td><td>26（2026-03）</td><td>非 LTS；Java 27 预计 2026-09</td></tr>
+      <tr><td>Spring Framework</td><td><strong>7.0.x</strong></td><td>JSpecify 空安全、<code>BeanRegistrar</code>、Jakarta EE 11</td></tr>
+      <tr><td>Spring Boot</td><td><strong>4.1.x</strong></td><td>最低 Java 17，支持到 Java 26</td></tr>
+      <tr><td>Google Guice</td><td>7.0.0</td><td>仅 <code>jakarta.inject</code>；6.0 是双命名空间过渡版</td></tr>
+      <tr><td>Jakarta EE</td><td>11</td><td>CDI 4.1、Persistence 3.2、Servlet 6.1</td></tr>
+      <tr><td>Dagger</td><td>2.60.x</td><td>编译期 DI，无反射</td></tr>
+      <tr><td>Hibernate ORM</td><td>7.x</td><td>Jakarta Persistence 3.2</td></tr>
+      <tr><td>JUnit</td><td>5.x（Jupiter）</td><td>—</td></tr>
+      <tr><td>Mockito</td><td>5.x</td><td>内联 mock 默认开启</td></tr>
+    </tbody>
+  </table></div>
+  <p style="font-size:13px;color:var(--muted)">版本信息来源：<a href="https://spring.io/blog/2026/06/10/spring-boot-4/">Spring Boot 4.1 发布公告</a>、<a href="https://github.com/spring-projects/spring-framework/wiki/Spring-Framework-7.0-Release-Notes">Spring Framework 7.0 Release Notes</a>、<a href="https://github.com/google/guice/wiki/Guice600">Guice 6/7 迁移说明</a>、<a href="https://openjdk.org/jeps/506">JEP 506: Scoped Values</a>、<a href="https://github.com/google/dagger/releases">Dagger releases</a>。</p>
+
+  <div class="pager"><a href="ch11.html"><span>上一章</span>11 · 实战：Crosstalk</a><a class="next" href="appendix-b.html"><span>下一章</span>附录 B · 其他容器与术语表</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

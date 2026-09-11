@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>一本 2009 年的书，为什么今天仍然值得读 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a class="on" aria-current="page" href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch0">
+  <p class="eyebrow">导读</p>
+  <h2 class="title">一本 2009 年的书，为什么今天仍然值得读</h2>
+  <p class="lede">这本书讲的不是 Spring 的 API，而是<strong>「谁来负责构造对象」</strong>这个问题的完整解空间：构造顺序、状态归属、行为织入、可测试性。API 会过时，这些约束不会。所以本讲义的做法是——<strong>原理照讲，代码全部翻新</strong>。</p>
+
+  <ul class="chips">
+    <li>原书 11 章 + 2 附录</li>
+    <li>Java · Spring 2.5 · Guice 2.0 · PicoContainer</li>
+    <li>对照 Spring 7 / Boot 4 · Guice 7 · Jakarta EE 11</li>
+    <li>配套源码 <code>prasanna/src/c1…c9</code></li>
+  </ul>
+
+  <div class="hero-rule"></div>
+
+  <h3><span class="sec">0.1</span>你手里的两份材料</h3>
+  <p>仓库里有两样东西，它们是同一本书的两半：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th>材料</th><th>是什么</th><th>怎么用</th></tr></thead>
+    <tbody>
+      <tr><td><code>…using Spring and Guice.pdf</code></td><td>Prasanna《Dependency Injection》正文，354 页，Manning 2009</td><td>本讲义按章重写了它的全部论证</td></tr>
+      <tr><td><code>prasanna/src/</code></td><td>随书源码，目录名 <code>c1</code>…<code>c9</code> 直接对应章号</td><td>每章末尾会指出对应的类；它们几乎就是书里的清单原文</td></tr>
+      <tr><td><code>prasanna/*.xml</code></td><td>Spring 2.5 的 <code>&lt;beans&gt;</code> 配置（<code>stereo.xml</code>、<code>comics.xml</code>…）</td><td>看一眼即可——这套 XML 写法今天已经淘汰，见附录 A</td></tr>
+      <tr><td><code>prasanna/crosstalk/</code></td><td>第 11 章的完整 Web 示例（Guice + Hibernate + Sitebricks）</td><td>依赖的 jar 全是 2009 年的，不能直接跑，只读架构</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="box note">
+    <span class="tag">关于第二本 PDF</span>
+    <p>目录里还有一本 Seemann &amp; van Deursen 的《Dependency Injection Principles, Practices, and Patterns》(2019, C#/.NET)。那是同一主题的另一本书，本讲义不涉及。两本的关系：Prasanna 讲<strong>机制</strong>（作用域、生命周期、代理怎么实现），Seemann 讲<strong>范式</strong>（Composition Root、反模式目录）。读完这本再读那本，收益很高。</p>
+  </div>
+
+  <h3><span class="sec">0.2</span>全书的论证结构</h3>
+  <p>这本书不是 API 手册的堆砌，它有一条相当清楚的主线。理解这条线，比记住任何一个注解都重要：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 880 330" role="img" aria-label="全书论证结构：从“谁构造对象”出发，分为装配、状态、行为三条支线，最终汇入可测试的模块化架构" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+      </marker>
+      <marker id="a0c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#A94A16"/>
+      </marker>
+    </defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="12" fill="currentColor">
+
+      <rect x="20" y="130" width="150" height="66" rx="3" fill="none" stroke="#A94A16" stroke-width="1.6"/>
+      <text x="95" y="155" text-anchor="middle" font-size="12.5" fill="#A94A16">核心问题</text>
+      <text x="95" y="175" text-anchor="middle" font-size="11.5" fill="#A94A16">谁来构造对象？</text>
+      <text x="95" y="212" text-anchor="middle" font-size="10.5" opacity=".65">第 1–2 章</text>
+
+      <line x1="172" y1="163" x2="226" y2="163" stroke="#A94A16" stroke-width="1.4" marker-end="url(#a0c)"/>
+
+      <rect x="230" y="130" width="150" height="66" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="305" y="158" text-anchor="middle">装配</text>
+      <text x="305" y="177" text-anchor="middle" font-size="10.5" opacity=".7">构造器 / setter / 键</text>
+      <text x="305" y="212" text-anchor="middle" font-size="10.5" opacity=".65">第 3–4 章</text>
+
+      <line x1="382" y1="152" x2="436" y2="80" stroke="currentColor" stroke-width="1.2" marker-end="url(#a0)"/>
+      <line x1="382" y1="163" x2="436" y2="163" stroke="currentColor" stroke-width="1.2" marker-end="url(#a0)"/>
+      <line x1="382" y1="174" x2="436" y2="246" stroke="currentColor" stroke-width="1.2" marker-end="url(#a0)"/>
+
+      <rect x="440" y="47" width="160" height="66" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="520" y="75" text-anchor="middle">状态归谁</text>
+      <text x="520" y="94" text-anchor="middle" font-size="10.5" opacity=".7">作用域 · 第 5–6 章</text>
+
+      <rect x="440" y="130" width="160" height="66" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="520" y="158" text-anchor="middle">何时通知</text>
+      <text x="520" y="177" text-anchor="middle" font-size="10.5" opacity=".7">生命周期 · 第 7 章</text>
+
+      <rect x="440" y="213" width="160" height="66" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="520" y="241" text-anchor="middle">行为怎么改</text>
+      <text x="520" y="260" text-anchor="middle" font-size="10.5" opacity=".7">拦截 AOP · 第 8 章</text>
+
+      <line x1="602" y1="80" x2="666" y2="150" stroke="currentColor" stroke-width="1.2" marker-end="url(#a0)"/>
+      <line x1="602" y1="163" x2="666" y2="163" stroke="currentColor" stroke-width="1.2" marker-end="url(#a0)"/>
+      <line x1="602" y1="246" x2="666" y2="176" stroke="currentColor" stroke-width="1.2" marker-end="url(#a0)"/>
+
+      <rect x="670" y="118" width="180" height="90" rx="3" fill="none" stroke="#A94A16" stroke-width="1.6"/>
+      <text x="760" y="148" text-anchor="middle" font-size="12.5" fill="#A94A16">可测试的模块化架构</text>
+      <text x="760" y="170" text-anchor="middle" font-size="10.5" fill="#A94A16" opacity=".85">并发安全 · 第 9 章</text>
+      <text x="760" y="188" text-anchor="middle" font-size="10.5" fill="#A94A16" opacity=".85">框架集成 · 第 10–11 章</text>
+
+      <text x="435" y="310" text-anchor="middle" font-size="10.5" opacity=".6">每一条支线都在回答同一件事：把责任从业务代码里挪出去，挪到注入器里</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>三条支线，一个目的。</b>装配（谁 new）、状态（活多久）、行为（被谁包一层）——这三件事原本散落在业务方法里，DI 把它们全部收编成声明式配置。书里所有的"陷阱"章节，讲的都是这三条线互相越界时发生了什么。</figcaption>
+  </figure>
+
+  <h3><span class="sec">0.3</span>本讲义怎么读</h3>
+  <p>每一章的结构是固定的：</p>
+  <ul>
+    <li><strong>主旨句</strong> —— 一句话说清这一章在回答什么问题；</li>
+    <li><strong>正文</strong> —— 原书论证的重写，配机制图；代码用现代写法，遇到 2009 年的写法会明确标注；</li>
+    <li><strong style="color:var(--rust)">⚠ 陷阱框</strong> —— 原书踩过的坑，红色边线；</li>
+    <li><strong style="color:var(--teal)">2026 对照框</strong> —— 这一章的结论在今天成立到什么程度、哪些 API 已经换掉，青色边线。</li>
+  </ul>
+  <p>如果你只想知道"哪些东西过时了"，直接跳到 <a href="appendix-a.html">附录 A：2009 → 2026 迁移总表</a>。</p>
+
+  <div class="box now">
+    <span class="tag">先说结论：什么变了，什么没变</span>
+    <p><strong>没变的（占全书 80%）：</strong>构造器注入优先、不可变字段、作用域越界（scope-widening）的危害、单例必须线程安全、循环依赖是设计信号、代理无法拦截 <code>final</code>/<code>private</code>/<code>static</code>、松耦合靠接口契约、集成测试补单元测试的盲区。这些是语言和运行时的性质，不是框架的选择。</p>
+    <p><strong>变了的（占 20%，但很显眼）：</strong>XML 配置基本消失、<code>javax.*</code> 全体迁到 <code>jakarta.*</code>、书里推荐的三个库（warp-persist / Sitebricks / PicoContainer）已全部停更、编译期 DI（Dagger/Micronaut/Quarkus）成了运行时反射之外的第二条主流路线、<code>ThreadLocal</code> 作用域在虚拟线程时代有了替代品 <code>ScopedValue</code>。</p>
+  </div>
+
+  <h3><span class="sec">0.4</span>章节速览</h3>
+  <div class="cards">
+    <a class="card" href="ch01.html"><span class="n">01</span><h4>依赖注入到底解决什么</h4><p>手工构造 → 工厂 → 服务定位器 → 注入器，四步演进与各自的死穴</p></a>
+    <a class="card" href="ch02.html"><span class="n">02</span><h4>动手：注入器与键</h4><p>bootstrap 时机、五种配置方式、字符串键/类型键/组合键的取舍</p></a>
+    <a class="card" href="ch03.html"><span class="n">03</span><h4>注入方式的取舍</h4><p>构造器 vs setter、构造器金字塔、循环引用、Provider / Assisted / Builder</p></a>
+    <a class="card" href="ch04.html"><span class="n">04</span><h4>模块化与可测试性</h4><p>紧耦合的真实代价、面向契约编程、单元测试与集成测试的分工</p></a>
+    <a class="card" href="ch05.html"><span class="n">05</span><h4>作用域：状态的容器</h4><p>no scope / singleton / request / session，以及"单例反模式"为何是反模式</p></a>
+    <a class="card" href="ch06.html"><span class="n">06</span><h4>自定义作用域与陷阱</h4><p>手写事务作用域，以及 scope-widening 引发的三类事故</p></a>
+    <a class="card" href="ch07.html"><span class="n">07</span><h4>对象生命周期</h4><p>构造/终结、领域相关的生命周期、析构反模式、后处理与多播</p></a>
+    <a class="card" href="ch08.html"><span class="n">08</span><h4>拦截、代理与 AOP</h4><p>代理原理、事务与安全的声明式实现、代理拦不到的五类成员</p></a>
+    <a class="card" href="ch09.html"><span class="n">09</span><h4>并发、可见性与设计</h4><p>安全发布、五道不可变性谜题、同步 vs 并发、包级封装</p></a>
+    <a class="card" href="ch10.html"><span class="n">10</span><h4>与第三方框架集成</h4><p>刚性配置反模式、脆弱基类、程序化配置为何是正解</p></a>
+    <a class="card" href="ch11.html"><span class="n">11</span><h4>实战：Crosstalk</h4><p>一个微博客的完整分层，把前十章的模式串起来</p></a>
+  </div>
+
+  <div class="pager"><a href="index.html"><span>返回</span>目录</a><a class="next" href="ch01.html"><span>下一章</span>01 · 依赖注入到底解决什么</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

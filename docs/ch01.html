@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>依赖注入到底解决什么 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a class="on" aria-current="page" href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch1">
+  <p class="eyebrow">第 1 章</p>
+  <h2 class="title">依赖注入到底解决什么</h2>
+  <p class="lede">一切都从一个朴素的问题开始：<code>Emailer</code> 需要一个 <code>SpellChecker</code>，<strong>这个 SpellChecker 从哪来？</strong>本章走完四种答案——自己 new、手工传入、工厂、服务定位器——看着它们一个个撞墙，最后才轮到注入器出场。</p>
+  <ul class="chips">
+    <li>对象图 Object graph</li>
+    <li>Construction by hand</li>
+    <li>Factory / Service Locator</li>
+    <li>好莱坞原则</li>
+    <li>viral injection</li>
+  </ul>
+
+  <h3><span class="sec">1.1</span>把对象看成服务</h3>
+  <p>程序是对现实流程的自动化：发一封邮件、处理一张订单。参与流程的角色被建模成对象，对象之间靠方法调用协作。当一个对象要完成工作必须借助另一个对象时，前者叫<em>客户（client / dependent）</em>，后者叫<em>服务（service / dependency）</em>。</p>
+  <p>把这些引用关系画出来，就是<em>对象图（object graph）</em>。DI 这门学问的全部内容，用一句话概括就是：</p>
+  <div class="box note">
+    <span class="tag">全书的定义</span>
+    <p>DI 关心的是<strong>如何可靠、高效地构建对象图</strong>，以及围绕它的策略、模式与最佳实践。</p>
+  </div>
+  <p>注意这里说的是"构建"，不是"使用"。使用对象图的代码（业务逻辑）在有没有 DI 的情况下写法完全一样——这是 DI 号称"非侵入"的根据。变的只是<strong>谁来负责 new</strong>。</p>
+
+  <h3><span class="sec">1.2</span>四种答案，三堵墙</h3>
+
+  <h4>答案零：自己 new（不是答案）</h4>
+<pre><code>public class Emailer {
+    private final SpellChecker spellChecker;
+
+    public Emailer() {
+        <b>this.spellChecker = new EnglishSpellChecker();</b>   <i>// 把创建封装进来了</i>
+    }
+
+    public void send(String text) { spellChecker.check(text); ... }
+}</code></pre>
+  <p>这段代码有两个致命问题，而且它们是同一个问题的两面：</p>
+  <ul>
+    <li><strong>不可测</strong>。想验证 <code>send()</code> 有没有真的调用拼写检查？你没有任何缝隙把 mock 塞进去。</li>
+    <li><strong>不可变体</strong>。想要一个法语版的 <code>Emailer</code>？做不到。<code>Emailer</code> 把"我用哪种拼写检查"这个决定<strong>据为己有</strong>了。</li>
+  </ul>
+  <p>用书里的话说：它封装的不只是依赖，还封装了<strong>依赖的创建</strong>。这两者必须分开。</p>
+
+  <h4>答案一：手工构造（construction by hand）</h4>
+  <p>不封装创建，让外部传进来。用 setter 或者构造器都行：</p>
+  <div class="split">
+    <div class="bad"><h5>setter 传入</h5>
+<pre><code>Emailer e = new Emailer();
+e.setSpellChecker(new FrenchSpellChecker());
+<i>// 可能忘记调用 setter → NPE</i></code></pre>
+    </div>
+    <div class="good"><h5>构造器传入</h5>
+<pre><code>Emailer e = new Emailer(new FrenchSpellChecker());
+<i>// 契约显式：不可能"忘记"</i></code></pre>
+    </div>
+  </div>
+  <p>测试立刻变得可行了。但这只是把负担<strong>转嫁</strong>给了调用方，并没有消灭它：</p>
+  <ul>
+    <li>同一个对象在十处使用，接线代码就要重复十遍；</li>
+    <li>改动对象图的任何一层，所有调用方都可能要跟着改；</li>
+    <li>更严重的是<strong>破坏封装</strong>：客户被迫知道服务的内部构造。</li>
+  </ul>
+
+  <h4>答案二：工厂模式</h4>
+  <p>把接线搬进第三方对象：</p>
+<pre><code>public class EmailerFactory {
+    public Emailer newJapaneseEmailer() {
+        Emailer service = new Emailer();
+        service.setSpellChecker(new JapaneseSpellChecker());
+        service.setAddressBook(new EmailBook());
+        service.setTextEditor(new SimpleJapaneseTextEditor());
+        return service;
+    }
+}</code></pre>
+  <p>客户端代码干净了：<code>new EmailerFactory().newJapaneseEmailer()</code>。但三堵墙开始出现。</p>
+  <p><strong>墙一：工厂爆炸。</strong>每一个服务要一个工厂，每一个<em>变体</em>还要一个方法。把 <code>EmailBook</code> 换成 <code>PhoneAndEmailBook</code>，你要在三个方法里做<strong>三处一模一样</strong>的修改。顺着这条路走到极端，你会写出这种东西：</p>
+<pre><code>Emailer service = new EmailerFactoryFactory()
+        .newAdvancedEmailerFactory()
+        .newJapaneseEmailerWithPhoneAndEmail();</code></pre>
+  <p><strong>墙二：测试工厂的客户。</strong>要测试 <code>EmailClient</code>（它从工厂取 <code>Emailer</code>），你得让工厂返回 mock。于是工厂被迫长出一个静态 <code>set()</code>：</p>
+<pre><code>@Test void testEmailClient() {
+    MockEmailer mock = new MockEmailer();
+    EmailerFactory.set(mock);              <i>// 静态共享状态</i>
+    try {
+        new EmailClient().run();
+        assert mock.correctlySent();
+    } finally {
+        <b>EmailerFactory.set(null);</b>          <i>// 忘了清理就污染后续测试</i>
+    }
+}</code></pre>
+  <p><strong>墙三：并行测试直接崩。</strong>那个静态字段是全局的。多个测试线程并发跑，互相踩踏，测试结果完全不可信。<em>这是共享状态的本质问题，第 5 章会正面处理它。</em></p>
+
+  <h4>答案三：服务定位器</h4>
+  <p>服务定位器是"能生产任何服务的工厂"，靠键来区分：</p>
+<pre><code>Emailer emailer = (Emailer) new ServiceLocator()
+        .get("JapaneseEmailerWithPhoneAndEmail");</code></pre>
+  <p>它解决了工厂爆炸——一个定位器顶所有工厂。JNDI 就是这个模式的经典实现。但它没解决另外两堵墙，还添了新的：</p>
+  <ul>
+    <li>本质仍是工厂 → <strong>测试与共享状态问题原封不动</strong>；</li>
+    <li>键是不透明的字符串，绑错类型<strong>要到运行时才炸</strong>；</li>
+    <li>把服务信息编码进标识符（<code>"JapaneseEmailerWithPhoneAndEmail"</code>）冗长且依赖约定；</li>
+    <li>最要命的：<strong>客户端代码必须显式去"要"</strong>。这行 <code>locator.get(...)</code> 就写在业务方法里，它是业务逻辑的一部分，测试时躲不开。</li>
+  </ul>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 900 300" role="img" aria-label="四种构造方案对比：责任从对象自身，转移到调用方、工厂、定位器，最后转移到注入器，只有注入器不出现在业务代码里" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+      <marker id="a1c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A94A16"/></marker>
+    </defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11.5" fill="currentColor">
+      <text x="16" y="22" font-size="10.5" opacity=".6">谁持有「new」这个决定</text>
+      <line x1="16" y1="32" x2="884" y2="32" stroke="currentColor" stroke-width="1" opacity=".3"/>
+
+      <!-- 1 self -->
+      <text x="16" y="58" font-size="11" fill="#8E2A26">① 自己 new</text>
+      <rect x="16" y="70" width="112" height="42" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4"/>
+      <text x="72" y="88" text-anchor="middle" font-size="11">Emailer</text>
+      <text x="72" y="104" text-anchor="middle" font-size="9.5" fill="#8E2A26">new 在内部</text>
+      <text x="72" y="134" text-anchor="middle" font-size="9.5" opacity=".65">不可测</text>
+
+      <!-- 2 by hand -->
+      <text x="176" y="58" font-size="11">② 手工构造</text>
+      <rect x="176" y="70" width="86" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="219" y="95" text-anchor="middle" font-size="10.5">调用方</text>
+      <line x1="264" y1="91" x2="290" y2="91" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+      <rect x="292" y="70" width="86" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="335" y="95" text-anchor="middle" font-size="10.5">Emailer</text>
+      <text x="277" y="134" text-anchor="middle" font-size="9.5" opacity=".65">可测，但接线到处重复</text>
+
+      <!-- 3 factory -->
+      <text x="428" y="58" font-size="11">③ 工厂 / 定位器</text>
+      <rect x="428" y="70" width="80" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="468" y="95" text-anchor="middle" font-size="10.5">客户</text>
+      <line x1="510" y1="91" x2="536" y2="91" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+      <text x="523" y="83" text-anchor="middle" font-size="9" fill="#8E2A26">显式索取</text>
+      <rect x="538" y="70" width="80" height="42" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4"/>
+      <text x="578" y="88" text-anchor="middle" font-size="10.5">Factory</text>
+      <text x="578" y="104" text-anchor="middle" font-size="9" fill="#8E2A26">静态状态</text>
+      <line x1="620" y1="91" x2="646" y2="91" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+      <rect x="648" y="70" width="80" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="688" y="95" text-anchor="middle" font-size="10.5">Emailer</text>
+      <text x="578" y="134" text-anchor="middle" font-size="9.5" opacity=".65">索取这行代码活在业务方法里</text>
+
+      <!-- 4 injector -->
+      <line x1="16" y1="168" x2="884" y2="168" stroke="currentColor" stroke-width="1" opacity=".3"/>
+      <text x="16" y="196" font-size="11" fill="#A94A16">④ 依赖注入</text>
+
+      <rect x="176" y="208" width="120" height="46" rx="3" fill="none" stroke="#A94A16" stroke-width="1.6"/>
+      <text x="236" y="236" text-anchor="middle" font-size="11.5" fill="#A94A16">Injector</text>
+
+      <path d="M296 219 L360 208" stroke="#A94A16" stroke-width="1.3" fill="none" marker-end="url(#a1c)"/>
+      <path d="M296 243 L360 254" stroke="#A94A16" stroke-width="1.3" fill="none" marker-end="url(#a1c)"/>
+      <text x="336" y="204" text-anchor="middle" font-size="9" fill="#A94A16">构造并接线</text>
+
+      <rect x="364" y="188" width="120" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="424" y="213" text-anchor="middle" font-size="10.5">Emailer</text>
+      <rect x="364" y="236" width="120" height="42" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="424" y="261" text-anchor="middle" font-size="10.5">SpellChecker</text>
+
+      <line x1="486" y1="209" x2="512" y2="230" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+      <line x1="486" y1="257" x2="512" y2="236" stroke="currentColor" stroke-width="1.2" marker-end="url(#a1)"/>
+      <rect x="516" y="208" width="212" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="622" y="230" text-anchor="middle" font-size="10.5">业务代码里没有一行</text>
+      <text x="622" y="246" text-anchor="middle" font-size="10.5">提到构造或查找</text>
+
+      <text x="452" y="290" text-anchor="middle" font-size="9.5" opacity=".65">③ 与 ④ 的唯一区别：那行「索取」的代码，从业务方法里消失了</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>责任的四次转移。</b>①→②→③ 每一步都在把 <code>new</code> 往外挪，但到 ③ 为止，"去拿依赖"这个动作始终留在业务代码里，所以测试始终要对付它。④ 才是质变：客户既不创建也不索取，它<b>被动地</b>收到依赖。</figcaption>
+  </figure>
+
+  <h3><span class="sec">1.3</span>好莱坞原则</h3>
+  <p>"Don't call us; we'll call you."（别打给我们，我们会打给你。）经纪人这么对演员说，注入器这么对你的类说。</p>
+  <p>关键差别只有一个：构造、组装、接线的工作，交给一个<strong>外部框架</strong>完成。你的类只是声明"我需要什么"，然后闭眼等着东西送上门。</p>
+<pre><code><i>// 客户和服务，都不知道对方是怎么被造出来的</i>
+public class SimpleEmailClient {
+    private final Emailer emailer;
+
+    <b>@Inject</b>
+    public SimpleEmailClient(Emailer emailer) {   <i>// 只是声明需求</i>
+        this.emailer = emailer;
+    }
+
+    public void sendEmail() { emailer.send(readMessage()); }
+}</code></pre>
+
+  <h4>IoC 和 DI 是一回事吗</h4>
+  <p>不完全是。IoC（控制反转）泛指一切"责任反转"：Java EE 容器里的模块、框架自动调用的测试方法、鼠标点击触发的事件处理器……都算。<strong>DI 只是 IoC 的一个实例。</strong>作者干脆在书里弃用了 IoC 这个词（以及"IoC 容器"这个"邪恶的表亲"），只用三个精确术语：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th>术语</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>好莱坞原则</td><td>依赖是"被送到"客户手上的，而不是客户去要的</td></tr>
+      <tr><td>依赖注入器</td><td>实现这一原则的框架/库</td></tr>
+      <tr><td>依赖注入</td><td>基于这一原则设计应用时的全部考量</td></tr>
+    </tbody>
+  </table></div>
+  <p class="lede" style="font-size:15px;color:var(--muted);max-width:68ch">题外话：<em>dependency injection</em> 这个词的流行始于 Martin Fowler 2004 年那篇 <a href="https://martinfowler.com/articles/injection.html">Inversion of Control Containers and the Dependency Injection Pattern</a>，是他与 PicoContainer 作者、Rod Johnson 等人讨论后的产物。</p>
+
+  <h3><span class="sec">1.4</span>注入器 ≠ 服务定位器（虽然长得像）</h3>
+  <p>第 2 章你会看到 <code>injector.getInstance(Emailer.class)</code>，跟 <code>locator.get("Emailer")</code> 简直一模一样。作者自己也承认：<strong>注入器确实可以当服务定位器用。</strong>区别在三点，而这三点就是全部价值所在：</p>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 860 300" role="img" aria-label="病毒式注入：应用只从注入器取一个根对象，其余对象图沿依赖关系级联构造" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+    <marker id="a2c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#A94A16"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <rect x="16" y="118" width="128" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="80" y="141" text-anchor="middle" font-size="10.5">应用启动器</text>
+      <text x="80" y="157" text-anchor="middle" font-size="9.5" opacity=".65">不参与业务行为</text>
+
+      <line x1="146" y1="144" x2="196" y2="144" stroke="#A94A16" stroke-width="1.4" marker-end="url(#a2c)"/>
+      <text x="171" y="136" text-anchor="middle" font-size="9" fill="#A94A16">仅此一次</text>
+
+      <rect x="200" y="118" width="112" height="52" rx="3" fill="none" stroke="#A94A16" stroke-width="1.6"/>
+      <text x="256" y="149" text-anchor="middle" font-size="11.5" fill="#A94A16">Injector</text>
+
+      <line x1="314" y1="144" x2="366" y2="144" stroke="#A94A16" stroke-width="1.4" marker-end="url(#a2c)"/>
+      <rect x="370" y="118" width="120" height="52" rx="3" fill="none" stroke="#A94A16" stroke-width="1.6"/>
+      <text x="430" y="142" text-anchor="middle" font-size="11" fill="#A94A16">根对象</text>
+      <text x="430" y="158" text-anchor="middle" font-size="9" fill="#A94A16" opacity=".8">Servlet / main</text>
+
+      <line x1="492" y1="132" x2="546" y2="72" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+      <line x1="492" y1="156" x2="546" y2="216" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+
+      <rect x="550" y="46" width="112" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="606" y="74" text-anchor="middle">Service A</text>
+      <rect x="550" y="196" width="112" height="46" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="606" y="224" text-anchor="middle">Service B</text>
+
+      <line x1="664" y1="60" x2="712" y2="46" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+      <line x1="664" y1="80" x2="712" y2="110" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+      <line x1="664" y1="219" x2="712" y2="196" stroke="currentColor" stroke-width="1.2" marker-end="url(#a2)"/>
+
+      <rect x="716" y="24" width="96" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+      <text x="764" y="47" text-anchor="middle" font-size="10">Dao</text>
+      <rect x="716" y="92" width="96" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+      <text x="764" y="115" text-anchor="middle" font-size="10">Cache</text>
+      <rect x="716" y="176" width="96" height="38" rx="3" fill="none" stroke="currentColor" stroke-width="1" opacity=".75"/>
+      <text x="764" y="199" text-anchor="middle" font-size="10">Clock</text>
+
+      <text x="430" y="278" text-anchor="middle" font-size="10" opacity=".7">整棵树只有最左边那一次调用；越往右，代码越不知道注入器的存在</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>病毒式注入（viral injection）。</b>根对象往下的每一层都是级联构造的。这就是与服务定位器的核心差别：定位器要在<b>每一处</b>调用，注入器只在<b>入口处</b>调用一次，而入口不参与业务逻辑。</figcaption>
+  </figure>
+
+  <ul>
+    <li><strong>调用者不同。</strong>调用注入器的是应用启动器，不是业务代码。启动器不参与程序行为，所以它不进入测试范围。</li>
+    <li><strong>只取根对象。</strong>整个应用通常只 <code>getInstance()</code> 一次，其余全靠级联。在 Web 应用里，这一次调用还被集成层（<code>guice-servlet</code>、Spring 的 <code>DispatcherServlet</code>）替你做掉了。</li>
+    <li><strong>作用域。</strong>注入器返回的实例取决于<strong>当前执行上下文</strong>——同一个键，在这个请求里和那个请求里可以是不同实例。<em>这一点服务定位器完全没有，也是第 5、6 两章的全部主题。</em></li>
+  </ul>
+
+  <div class="box trap">
+    <span class="tag">⚠ 陷阱</span>
+    <p>把注入器<strong>注入到业务类里</strong>，然后在方法里调 <code>injector.getInstance(...)</code>——这就是把 DI 退化回服务定位器，同时还多背了一个框架依赖。这是新手最常犯的错。业务类里出现 <code>Injector</code> / <code>ApplicationContext</code> 类型的字段，基本都是设计信号。</p>
+  </div>
+
+  <h3><span class="sec">1.5</span>2009 年的 Java DI 版图</h3>
+  <p>原书这一节盘点了当时的库。今天回看，它是一份相当准确的死亡名单：</p>
+  <div class="tw"><table>
+    <thead><tr><th>库</th><th>2009 年的评价</th><th>2026 年状况</th></tr></thead>
+    <tbody>
+      <tr><td>Apache Avalon</td><td>最早的 DI 库，接口注入，"已停止维护"</td><td>确已消亡；接口注入这个流派整体退场</td></tr>
+      <tr><td>Spring Framework</td><td>"几乎就是 DI 的同义词"，XML 为主</td><td>依然是 Java 生态第一，但配置方式彻底换了（见附录 A）</td></tr>
+      <tr><td>PicoContainer</td><td>第一个提供构造器注入的库</td><td>停更；构造器注入的理念被所有人继承了</td></tr>
+      <tr><td>Apache HiveMind</td><td>Tapestry 的内部注入器，有服务池等特性</td><td>已归档</td></tr>
+      <tr><td>Google Guice</td><td>"新秀"，Java 5 注解、类型安全</td><td>7.0（2023）仍在维护；它的 <code>@Inject</code> 成了 JSR-330 标准</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+    <p><strong>本章的论证一个字都不用改。</strong>手工构造、工厂、服务定位器的三堵墙依然存在，Fowler 那篇文章仍是标准引用。变化在细节：</p>
+    <ul>
+      <li><strong>手工构造平反了</strong>。原书把它当成"过渡方案"，今天它在<strong>单元测试里是首选</strong>——测试里就该 <code>new Emailer(mockChecker)</code>，不要启动容器。第 4 章会重申这点。近年 .NET 圈流行的 <em>Pure DI</em>（完全不用容器，在 Composition Root 里手写接线）更是把它抬成了正经架构选项。</li>
+      <li><strong>服务定位器被正式定性为反模式</strong>。Seemann 那本书专门给它一节。今天你在代码评审里说 "this is Service Locator"，对方会当作批评。</li>
+      <li><strong>mock 框架换代</strong>：书里推荐的 EasyMock / JMock 已经边缘化，现在是 <strong>JUnit 5 + Mockito 5</strong>（Mockito 内联 mock 已能处理 final 类和静态方法，但那属于救火，不是设计许可）。</li>
+      <li><strong>语言帮了忙</strong>：Java 16 的 <code>record</code> 让"数据对象"和"服务对象"的界线可以写进语法里（第 9 章会用到）；Java 17 的 <code>sealed</code> 让"服务的实现集合"可以封闭。</li>
+    </ul>
+<pre><code><i>// 2026 年的等价写法：无注解、无框架，纯手工构造 —— 测试里就这么写</i>
+record Emailer(SpellChecker checker, AddressBook book) {
+    void send(String text) { checker.check(text); ... }
+}
+
+@Test
+void 发送前必须检查拼写() {
+    SpellChecker checker = mock(SpellChecker.class);
+    new Emailer(checker, new EmailBook()).send("Hello");
+    verify(checker).check("Hello");
+}</code></pre>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/c1/</code> —— <code>Emailer.java</code>、<code>TextEditor.java</code>、<code>SpringMain.java</code>、<code>foo.xml</code>。注意 <code>SpringMain</code> 用的是 <code>FileSystemXmlApplicationContext</code>，这个类今天仍在，但你不该再用它。</p>
+  </div>
+
+  <div class="pager"><a href="ch00.html"><span>上一章</span>00 · 导读与全书地图</a><a class="next" href="ch02.html"><span>下一章</span>02 · 动手：注入器与键</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>

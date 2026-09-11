@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>动手：注入器与键 · 依赖注入十一讲</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><a href="index.html">
+    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
+    <h1>依赖注入十一讲</h1>
+    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
+  </a></div>
+  <nav class="sb-nav sb-home">
+    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
+  </nav>
+  <div class="sb-group">开始</div>
+  <nav class="sb-nav">
+    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
+  </nav>
+  <div class="sb-group">第一部分 · 原理</div>
+  <nav class="sb-nav">
+    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
+    <a class="on" aria-current="page" href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
+    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
+    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
+  </nav>
+  <div class="sb-group">第二部分 · 状态与行为</div>
+  <nav class="sb-nav">
+    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
+    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
+    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
+    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
+  </nav>
+  <div class="sb-group">第三部分 · 工程</div>
+  <nav class="sb-nav">
+    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
+    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
+    <a href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
+  </nav>
+  <div class="sb-group">附录</div>
+  <nav class="sb-nav">
+    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
+    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
+  </nav>
+</aside>
+
+<main class="main"><div class="wrap">
+
+<section class="chapter" id="ch2">
+  <p class="eyebrow">第 2 章</p>
+  <h2 class="title">动手：注入器与键</h2>
+  <p class="lede">第 1 章说清了"为什么"，这一章处理"怎么做"。三步：<strong>启动注入器 → 取出根对象 → 用它</strong>。真正有深度的是第三个问题——注入器凭什么认出你要的那个实现？答案是<em>键（key）</em>，而键的设计直接决定了错误在编译期暴露还是在生产环境暴露。</p>
+  <ul class="chips">
+    <li>bootstrap</li>
+    <li>五种配置方式</li>
+    <li>字符串键 / 类型键 / 组合键</li>
+    <li>命名空间</li>
+    <li>基础设施 vs 应用逻辑</li>
+  </ul>
+
+  <h3><span class="sec">2.1</span>注入器自己也是个服务</h3>
+  <p>注入器要先被构造出来才能用。这一步叫 <em>bootstrap</em>，发生的时机取决于应用类型：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th>时机</th><th>典型场景</th><th>今天的等价物</th></tr></thead>
+    <tbody>
+      <tr><td>Web 应用部署时的 init 阶段</td><td>Servlet 容器加载 war</td><td>Spring Boot 的 <code>SpringApplication.run()</code></td></tr>
+      <tr><td>桌面程序启动时</td><td>Swing/JavaFX 的 main</td><td>同上，或手写 Composition Root</td></tr>
+      <tr><td>按需，每次用到就建一个</td><td>远程调用</td><td>几乎绝迹（太贵）</td></tr>
+      <tr><td>懒加载，首次使用时</td><td>调试/测试</td><td>Guice 的 <code>Stage.DEVELOPMENT</code></td></tr>
+    </tbody>
+  </table></div>
+  <p>绝大多数情况下，<strong>注入器的启动就等于应用的启动</strong>。这不是巧合——注入器持有整个对象图，它的生命周期天然等于应用的生命周期（第 7 章会展开）。</p>
+
+  <h3><span class="sec">2.2</span>三行代码，三件事</h3>
+<pre><code>Guice.createInjector().getInstance(Emailer.class).send("Hello");
+<i>//     ①创建注入器            ②取根对象            ③用它</i></code></pre>
+  <p>拆开写就是：</p>
+<pre><code>Injector injector = Guice.createInjector();
+Emailer emailer = injector.getInstance(Emailer.class);
+emailer.send("Hello!");</code></pre>
+  <p>Spring 的等价物：</p>
+<pre><code>BeanFactory injector = new FileSystemXmlApplicationContext("email.xml");
+Emailer emailer = (Emailer) injector.getBean("emailer");   <i>// 注意这个强制转型</i>
+emailer.send("Hello!");</code></pre>
+  <p>PicoContainer：</p>
+<pre><code>MutablePicoContainer injector = new DefaultPicoContainer();
+injector.addComponent(Emailer.class);
+injector.addComponent(SpellChecker.class);
+injector.getComponent(Emailer.class).send("Hello!");</code></pre>
+  <p>请注意第三行在三个库里<strong>完全一样</strong>：<code>emailer.send("Hello!")</code>。这就是"DI 不是侵入式技术"的具体含义——业务代码不因为换了容器而改变。</p>
+
+  <div class="box trap">
+    <span class="tag">⚠ 注意 Spring 那行强制转型</span>
+    <p><code>getBean("emailer")</code> 返回 <code>Object</code>，你必须转型。这个转型是<strong>运行时</strong>检查的。配置里绑错了类型，编译器一声不吭，程序跑到这一行才 <code>ClassCastException</code>。这正是 2.4 节要解决的问题。</p>
+    <p><em>今天的写法：</em><code>context.getBean(Emailer.class)</code>，泛型返回，转型消失。但更好的写法是——根本不调 <code>getBean</code>。</p>
+  </div>
+
+  <h3><span class="sec">2.3</span>告诉注入器怎么装配：五种方式</h3>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 820 330" role="img" aria-label="注入器可以从五种来源获取装配信息：注解、XML、程序化 API、DSL、类结构推断" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <circle cx="410" cy="165" r="62" fill="none" stroke="#A94A16" stroke-width="1.8"/>
+      <text x="410" y="162" text-anchor="middle" font-size="13" fill="#A94A16">Injector</text>
+      <text x="410" y="180" text-anchor="middle" font-size="9.5" fill="#A94A16" opacity=".8">元数据 → 对象图</text>
+
+      <rect x="286" y="16" width="248" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="410" y="38" text-anchor="middle" font-size="11">① 注解</text>
+      <text x="410" y="55" text-anchor="middle" font-size="9.5" opacity=".7">@Inject / @Autowired / @Component</text>
+      <line x1="410" y1="70" x2="410" y2="99" stroke="currentColor" stroke-width="1.2" marker-end="url(#a3)"/>
+
+      <rect x="16" y="88" width="190" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="111" y="110" text-anchor="middle" font-size="11">② XML 配置文件</text>
+      <text x="111" y="127" text-anchor="middle" font-size="9.5" opacity=".7">&lt;bean id=… class=…&gt;</text>
+      <line x1="208" y1="120" x2="345" y2="145" stroke="currentColor" stroke-width="1.2" marker-end="url(#a3)"/>
+
+      <rect x="16" y="196" width="190" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="111" y="218" text-anchor="middle" font-size="11">③ 程序化 API</text>
+      <text x="111" y="235" text-anchor="middle" font-size="9.5" opacity=".7">addComponent(A.class)</text>
+      <line x1="208" y1="222" x2="345" y2="192" stroke="currentColor" stroke-width="1.2" marker-end="url(#a3)"/>
+
+      <rect x="614" y="88" width="190" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="709" y="110" text-anchor="middle" font-size="11">④ 绑定 DSL</text>
+      <text x="709" y="127" text-anchor="middle" font-size="9.5" opacity=".7">bind(A).to(B).in(scope)</text>
+      <line x1="612" y1="120" x2="475" y2="145" stroke="currentColor" stroke-width="1.2" marker-end="url(#a3)"/>
+
+      <rect x="614" y="196" width="190" height="52" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="709" y="218" text-anchor="middle" font-size="11">⑤ 类结构推断</text>
+      <text x="709" y="235" text-anchor="middle" font-size="9.5" opacity=".7">autowire / 唯一构造器</text>
+      <line x1="612" y1="222" x2="475" y2="192" stroke="currentColor" stroke-width="1.2" marker-end="url(#a3)"/>
+
+      <line x1="410" y1="230" x2="410" y2="266" stroke="#A94A16" stroke-width="1.4" marker-end="url(#a3)"/>
+      <rect x="286" y="270" width="248" height="44" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="410" y="297" text-anchor="middle" font-size="11.5" fill="#A94A16">装配好的应用</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>五个入口，一个出口。</b>实际项目里通常混用：结构推断做主力（省配置），注解做标记（哪个构造器、哪个变体），DSL 或 XML 处理推断不了的部分（第三方类、基本类型参数）。<b>2026 年 ② 基本被 ④ 取代</b>，其余四种都活得很好。</figcaption>
+  </figure>
+
+  <h4>Spring 的 XML（2009 主流，今天的历史文物）</h4>
+<pre><code>&lt;beans ...&gt;
+    &lt;bean id="emailer" class="Emailer"&gt;
+        &lt;constructor-arg ref="spellChecker"/&gt;
+    &lt;/bean&gt;
+    &lt;bean id="spellChecker" class="SpellChecker"/&gt;
+&lt;/beans&gt;</code></pre>
+  <p>更紧凑、也更好的写法是<strong>内联嵌套</strong>：</p>
+<pre><code>&lt;bean id="emailer" class="Emailer"&gt;
+    &lt;constructor-arg&gt;<b>&lt;bean class="SpellChecker"/&gt;</b>&lt;/constructor-arg&gt;
+&lt;/bean&gt;</code></pre>
+  <p>好处有两个，而且第二个很重要：<code>SpellChecker</code> 的描述就在 <code>Emailer</code> 内部；并且它<strong>没有自己的标识符</strong>，所以只能在 <code>Emailer</code> 的语境里被取到。这叫<em>依赖封装</em>——你不会不小心把给邮件用的拼写检查器接到别的对象上去。</p>
+
+  <h4>Guice 的 Module</h4>
+<pre><code>public class EmailerModule extends AbstractModule {
+    @Override protected void configure() {
+        bind(Emailer.class);
+        bind(SpellChecker.class);
+    }
+}</code></pre>
+  <p>和 XML 的 <code>&lt;bean&gt;</code> 语义完全对应，但它是 Java 代码，编译器会检查。</p>
+
+  <h4>PicoContainer 的贪婪构造器</h4>
+<pre><code>injector.addComponent(Emailer.class);
+injector.addComponent(SpellChecker.class);
+injector.addComponent(TextEditor.class);</code></pre>
+  <p>Pico 默认<strong>贪婪地挑参数最多的构造器</strong>。<code>Emailer</code> 如果有 <code>(SpellChecker)</code> 和 <code>(SpellChecker, TextEditor)</code> 两个构造器，它会选后者。作者评价：<em>"这个默认行为令人困惑"</em>。今天 Spring 的规则更温和也更明确：<strong>只有一个构造器时自动用它</strong>；多个时必须用 <code>@Autowired</code> 指定。</p>
+
+  <h4>Spring 的 autowiring</h4>
+<pre><code>&lt;bean id="spellChecker" class="SpellChecker"/&gt;
+&lt;bean id="emailer" class="Emailer" <b>autowire="constructor"</b>/&gt;</code></pre>
+  <p>Spring 2.5 起可以直接在构造器上打 <code>@Autowired</code> 来消除歧义，<code>autowire</code> 属性就不需要了。<em>这一步是 Spring 从 XML 走向注解的转折点，而这本书恰好写在转折点上。</em></p>
+
+  <h3><span class="sec">2.4</span>键：这一章真正的重点</h3>
+  <p>同一个 <code>Emailer</code> 类，配上英语/法语/日语拼写检查器，是三个不同的<em>变体（variant）</em>。它们都实现同一份契约，所以注入器需要某种标签来区分它们。这个标签就是<em>键</em>。</p>
+  <p>好的键有三个性质：</p>
+  <ul>
+    <li><strong>唯一</strong>（unique）—— 一个键只对应一个对象图；</li>
+    <li><strong>任意</strong>（arbitrary）—— 能描述用户自造的任何变体，不能只有服务名；</li>
+    <li><strong>显式</strong>（explicit）—— 清楚说明这个实现<em>干什么</em>。</li>
+  </ul>
+
+  <h4>方案 A：字符串键</h4>
+  <p>作者花了很大篇幅强调一件事：<strong>用命名空间</strong>。他在一个大型项目里做过这样的重命名：</p>
+  <div class="split">
+    <div class="bad"><h5>改之前</h5>
+<pre><code>UserDetailsService
+UserDataUtils
+DateDataUtils
+UserService
+personnelSoapService
+userAuth / userAuthz</code></pre>
+    </div>
+    <div class="good"><h5>改之后</h5>
+<pre><code>dao.User
+util.Users
+util.Dates
+biz.Users
+soap.Personnel
+security.authentication
+security.authorization</code></pre>
+    </div>
+  </div>
+  <p>作者说"再怎么强调这件事的价值都不为过"。<em>这个建议在今天依然完全成立</em>——只是载体从 XML 的 <code>id</code> 变成了包名和 bean 名。</p>
+
+  <h4>字符串键的死穴</h4>
+  <p>书里举了一个绝妙的例子。任天堂 Wii 和游戏《半条命》：</p>
+<pre><code>&lt;bean id="nintendo.wii" class="com.nintendo.Wii"&gt;
+    &lt;constructor-arg ref="game.HalfLife"/&gt;
+&lt;/bean&gt;
+&lt;bean id="game.HalfLife" class="com.valve.HalfLifeGame"/&gt;</code></pre>
+<pre><code>public class Wii {
+    public Wii(<b>WiiGame</b> game) { ... }        <i>// 要一个 Wii 游戏</i>
+}
+public class HalfLife implements <b>PCGame</b> {   <i>// 但这是 PC 游戏！</i>
+    public void load() { ... }
+}</code></pre>
+  <p>键起得完美——唯一、任意、显式，还用了命名空间。但程序会在运行时抛 <code>UnsatisfiedDependencyException</code>。<strong>在配置文件里，你无从得知一个字符串键绑的是什么类型。</strong></p>
+  <p>更糟的是<em>拼错左边</em>的情况（第 10 章会重提）：拼错一个属性名，配置系统往往一声不吭地用默认值继续跑，连集成测试都发现不了。</p>
+
+  <h4>方案 B：类型键</h4>
+<pre><code>bind(WiiGame.class).to(HalfLife.class);   <i>// ← 这行编译不过</i></code></pre>
+  <p>编译器报错："没有接受 <code>HalfLife</code> 参数的 <code>to()</code> 方法"。错误在<strong>你敲键盘的那一刻</strong>就被 IDE 标红了。</p>
+  <p>但类型键在"好键三性质"上得分惨烈：</p>
+  <div class="tw compact"><table>
+    <thead><tr><th></th><th>字符串键</th><th>类型键</th><th>组合键</th></tr></thead>
+    <tbody>
+      <tr><td>唯一</td><td>✓</td><td>✗ 两个实现同一个 <code>Car.class</code></td><td>✓</td></tr>
+      <tr><td>任意</td><td>✓</td><td>✗ 只能写契约名</td><td>✓</td></tr>
+      <tr><td>显式</td><td>✓ 起得好的话</td><td>△ 只说了契约</td><td>✓</td></tr>
+      <tr><td>类型安全</td><td>✗ 运行时才炸</td><td>✓</td><td>✓</td></tr>
+      <tr><td>拼写安全</td><td>✗</td><td>✓</td><td>✓（用注解时）</td></tr>
+    </tbody>
+  </table></div>
+  <p>一句话总结：<strong>类型键安全但不灵活，字符串键灵活但不安全。</strong></p>
+
+  <h4>方案 C：组合键（正解）</h4>
+  <p>把两者拼起来。第一部分是类型（安全地指出契约），第二部分区分变体：</p>
+<pre><code>[Emailer.class, "english"]        <i>// 类型 + 字符串：还是会拼错</i>
+[Emailer.class, English.class]    <i>// 类型 + 注解类型：拼错 = 编译错误 ✓</i></code></pre>
+
+  <figure>
+  <div class="scroller">
+  <svg viewBox="0 0 840 250" role="img" aria-label="组合键由契约类型和限定注解两部分组成，分别绑定到不同实现；三种键的失败时刻对比" xmlns="http://www.w3.org/2000/svg">
+    <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+      <text x="16" y="20" font-size="10" opacity=".6">组合键的结构</text>
+
+      <rect x="16" y="36" width="126" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="79" y="53" text-anchor="middle" font-size="10.5">SpellChecker</text>
+      <text x="79" y="68" text-anchor="middle" font-size="9" opacity=".65">契约（类型）</text>
+      <text x="152" y="61" text-anchor="middle" font-size="14" opacity=".5">+</text>
+      <rect x="164" y="36" width="112" height="40" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="220" y="53" text-anchor="middle" font-size="10.5" fill="#A94A16">@English</text>
+      <text x="220" y="68" text-anchor="middle" font-size="9" fill="#A94A16" opacity=".8">变体（注解）</text>
+      <line x1="278" y1="56" x2="330" y2="56" stroke="currentColor" stroke-width="1.2" marker-end="url(#a4)"/>
+      <text x="304" y="48" text-anchor="middle" font-size="9" opacity=".65">绑定到</text>
+      <rect x="334" y="36" width="160" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="414" y="61" text-anchor="middle" font-size="10.5">EnglishSpellChecker</text>
+
+      <rect x="16" y="92" width="126" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="79" y="117" text-anchor="middle" font-size="10.5">SpellChecker</text>
+      <text x="152" y="117" text-anchor="middle" font-size="14" opacity=".5">+</text>
+      <rect x="164" y="92" width="112" height="40" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
+      <text x="220" y="117" text-anchor="middle" font-size="10.5" fill="#A94A16">@French</text>
+      <line x1="278" y1="112" x2="330" y2="112" stroke="currentColor" stroke-width="1.2" marker-end="url(#a4)"/>
+      <rect x="334" y="92" width="160" height="40" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
+      <text x="414" y="117" text-anchor="middle" font-size="10.5">FrenchSpellChecker</text>
+
+      <text x="530" y="80" font-size="9.5" opacity=".7">客户只写 @English，</text>
+      <text x="530" y="96" font-size="9.5" opacity=".7">不知道右边那一列的存在</text>
+      <text x="530" y="112" font-size="9.5" opacity=".7">→ 改绑定 = 零代码改动</text>
+
+      <line x1="16" y1="158" x2="824" y2="158" stroke="currentColor" stroke-width="1" opacity=".3"/>
+      <text x="16" y="180" font-size="10" opacity=".6">错误在什么时候被发现</text>
+
+      <text x="16" y="204" font-size="10.5" fill="#8E2A26">字符串键</text>
+      <line x1="110" y1="200" x2="470" y2="200" stroke="#8E2A26" stroke-width="1.2" stroke-dasharray="3 3"/>
+      <circle cx="470" cy="200" r="4" fill="#8E2A26"/>
+      <text x="482" y="204" font-size="9.5" fill="#8E2A26">首次使用该对象图时</text>
+
+      <text x="16" y="226" font-size="10.5" opacity=".8">类型键 / 组合键</text>
+      <line x1="110" y1="222" x2="146" y2="222" stroke="#0C6660" stroke-width="1.2"/>
+      <circle cx="146" cy="222" r="4" fill="#0C6660"/>
+      <text x="158" y="226" font-size="9.5" fill="#0C6660">敲代码的那一刻（编译期 / IDE）</text>
+
+      <text x="110" y="244" font-size="9" opacity=".55">编译</text>
+      <text x="470" y="244" font-size="9" opacity=".55" text-anchor="middle">运行时</text>
+    </g>
+  </svg>
+  </div>
+  <figcaption><b>组合键把"安全"和"灵活"同时拿到手。</b>下半部分是本章的实际收益：同一个错误，字符串键要等到那条代码路径被执行才暴露；类型/组合键在编译期就挡住了。项目越大，这条时间轴的差距越致命。</figcaption>
+  </figure>
+
+  <p>Guice 的写法：</p>
+<pre><code>bind(SpellChecker.class).annotatedWith(English.class).to(EnglishSpellChecker.class);
+bind(SpellChecker.class).annotatedWith(French.class).to(FrenchSpellChecker.class);</code></pre>
+  <p>客户端：</p>
+<pre><code>@Inject
+public SpellCheckerClient(<b>@English</b> SpellChecker spellChecker) { ... }</code></pre>
+
+  <div class="box note">
+    <span class="tag">一个反直觉的要点</span>
+    <p>"客户写了 <code>@English</code>，它不就和英语实现耦合了吗？"——<strong>没有。</strong>你可以把 <code>@English</code> 绑到 <code>FrenchSpellChecker</code> 上，客户端一行都不用改，也感知不到。<code>@English</code> 是一个<em>抽象标签</em>，不是实现名。这一点和"接口名不该叫 <code>IArrayListUserDao</code>"是同一个道理。</p>
+  </div>
+
+  <h3><span class="sec">2.5</span>基础设施逻辑 vs 应用逻辑</h3>
+  <p>本章的落点。渲染网页、发邮件、买股票、检查拼写——这些是<em>应用逻辑</em>。构造对象图、拿数据库连接、开 socket——这些是<em>基础设施逻辑</em>。DI 的价值就是把后者从前者里剥出去，剥干净。</p>
+  <p>作者顺带给了一条选型标准，今天读来仍然锋利：</p>
+  <div class="box note">
+    <span class="tag">选型标准</span>
+    <p>"一个会额外花力气<strong>阻止你搬起石头砸自己脚</strong>的 DI 库（比如在编译期检查绑定），比一个提供极大灵活性但类型检查很弱的库更可取——后者能把老手也拖进陷阱。"</p>
+  </div>
+
+  <div class="box now">
+    <span class="tag">2026 对照</span>
+    <h4 style="margin-top:2px">① XML 配置：已经出局</h4>
+    <p>Spring 官方文档从 5.x 起就以 Java 配置为主，Spring Boot 从来就不推荐 XML。今天等价的三层写法：</p>
+<pre><code><i>// 1. 组件扫描 —— 相当于原书的"类结构推断"，负责 90% 的接线</i>
+@Service
+class Emailer {
+    private final SpellChecker checker;
+    Emailer(SpellChecker checker) { this.checker = checker; }   <i>// 唯一构造器，@Autowired 可省</i>
+}
+
+<i>// 2. @Configuration —— 相当于原书的"XML / DSL"，处理推断不了的部分</i>
+@Configuration
+class MailConfig {
+    @Bean SpellChecker english() { return new EnglishSpellChecker(); }
+    @Bean Emailer emailer(SpellChecker c) { return new Emailer(c); }
+}
+
+<i>// 3. Spring 7 新增 BeanRegistrar —— 程序化注册，且对 AOT/原生镜像友好</i>
+class MailRegistrar implements BeanRegistrar {
+    public void register(BeanRegistry r, Environment env) {
+        r.registerBean(SpellChecker.class, spec -&gt; spec.supplier(ctx -&gt; new EnglishSpellChecker()));
+    }
+}</code></pre>
+    <p><code>BeanRegistrar</code> 是 Spring Framework 7 的新接口。有意思的是：<strong>它几乎就是 PicoContainer 的 <code>addComponent()</code> 风格</strong>——原书的"方案 ③ 程序化 API"绕了十七年又回来了，理由还是新的：AOT 编译需要在构建期就能确定 bean 定义，XML 和运行时反射都做不到。</p>
+
+    <h4>② 组合键：变成了 <code>@Qualifier</code>，而且进了标准</h4>
+    <div class="tw compact"><table>
+      <thead><tr><th>2009 年的写法</th><th>2026 年的写法</th></tr></thead>
+      <tbody>
+        <tr><td>Guice <code>bind(X).annotatedWith(@English)</code></td><td>没变，Guice 7 仍是这个 API</td></tr>
+        <tr><td>Spring <code>ref="spelling.English"</code></td><td><code>@Qualifier("english")</code> 或自定义限定注解</td></tr>
+        <tr><td>—</td><td>JSR-330 标准化为 <code>jakarta.inject.Qualifier</code> / <code>@Named</code></td></tr>
+        <tr><td>—</td><td>Spring 6.2 起支持 <code>@Fallback</code>，比 <code>@Primary</code> 更精细地处理"多候选"</td></tr>
+      </tbody>
+    </table></div>
+<pre><code><i>// 自定义限定注解 = 书里的"组合键第二部分"，写法几乎逐字对应</i>
+@Qualifier @Retention(RUNTIME)
+public @interface English {}
+
+@Bean @English SpellChecker english() { return new EnglishSpellChecker(); }
+
+@Service
+class Emailer {
+    Emailer(<b>@English</b> SpellChecker checker) { ... }
+}</code></pre>
+    <p>顺带一提：这个思路后来跨语言传播了。.NET 8（2023）加入的 <em>keyed services</em>（<code>AddKeyedSingleton</code> + <code>[FromKeyedServices]</code>）就是同一个组合键概念。</p>
+
+    <h4>③ 命名空间建议：依然成立，但载体变了</h4>
+    <p>Spring 的 bean 名今天多半是自动生成的类名首字母小写，人工起名的场合少了。<strong>但"用命名空间组织服务"这条建议转移到了包结构上</strong>：<code>com.acme.order.domain</code> / <code>…order.infra.jpa</code> / <code>…order.web</code>。原书 <code>dao.</code> / <code>biz.</code> / <code>util.</code> 那套前缀，今天是分层包名和 Spring Modulith 之类的模块化约束。</p>
+
+    <h4>④ <code>getBean()</code> 的地位</h4>
+    <p>原书三步走的第 ②步"从注入器取根对象"，在现代框架里<strong>完全被集成层吃掉了</strong>。写 Spring Boot 应用，你从头到尾不会调用一次 <code>getBean</code>；写 Guice + Jakarta Servlet，<code>guice-servlet</code> 替你做。手写 <code>getBean</code> 今天基本等价于"我在用服务定位器"。</p>
+
+    <h4>⑤ 库的存活情况</h4>
+    <ul>
+      <li><strong>Guice 7.0</strong>（2023-05）：仅支持 <code>jakarta.inject</code>；<code>guice-servlet</code>/<code>guice-persist</code> 也改成 <code>jakarta.servlet</code>/<code>jakarta.persistence</code>。6.0 是双命名空间的过渡版。</li>
+      <li><strong>Spring Framework 7.0.x / Spring Boot 4.1.x</strong>（2026）：Jakarta EE 11，最低 Java 17。</li>
+      <li><strong>PicoContainer</strong>：停更。它的"贪婪构造器"设计被历史否定，取而代之的是 Spring 的"唯一构造器自动注入"规则。</li>
+      <li><strong>新流派</strong>：Dagger 2（2.60.x）、Micronaut、Quarkus 在<strong>编译期</strong>生成接线代码。它们把本章的"键"检查从运行时彻底移到了 <code>javac</code> 的注解处理器里——某种意义上是把作者的选型标准做到了极致。</li>
+    </ul>
+  </div>
+
+  <div class="box note">
+    <span class="tag">配套源码</span>
+    <p><code>prasanna/src/</code> 根目录的 <code>Emailer.java</code>、<code>SpellChecker.java</code>、<code>Wii.java</code>、<code>WiiGame.java</code>、<code>PCGame.java</code>、<code>HalfLife.java</code>、<code>PicoMain.java</code>、<code>SpringMain.java</code>；配置见 <code>emails.xml</code>、<code>games.xml</code>、<code>sets.xml</code>。</p>
+  </div>
+
+  <div class="pager"><a href="ch01.html"><span>上一章</span>01 · 依赖注入到底解决什么</a><a class="next" href="ch03.html"><span>下一章</span>03 · 注入方式的取舍</a></div>
+</section>
+
+<footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
+
+</div></main>
+</div>
+<script src="assets/app.js"></script>
+</body>
+</html>
