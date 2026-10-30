@@ -4,58 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>实战：Crosstalk · 依赖注入十一讲</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500&display=swap">
 <link rel="stylesheet" href="assets/style.css">
+<script>try{var t=localStorage.getItem('di-doc-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
-<body>
-<div class="app">
-<aside class="sidebar">
-  <div class="brand"><a href="index.html">
-    <span class="mark">DI · Spring &amp; Guice · 2009 → 2026</span>
-    <h1>依赖注入十一讲</h1>
-    <p>Dhanji R. Prasanna《Dependency Injection》全书精讲，附现代生态对照</p>
-  </a></div>
-  <nav class="sb-nav sb-home">
-    <a class="home" href="index.html"><span class="n">⌂</span><span>目录</span></a>
-  </nav>
-  <div class="sb-group">开始</div>
-  <nav class="sb-nav">
-    <a href="ch00.html"><span class="n">00</span><span>导读与全书地图</span></a>
-  </nav>
-  <div class="sb-group">第一部分 · 原理</div>
-  <nav class="sb-nav">
-    <a href="ch01.html"><span class="n">01</span><span>依赖注入到底解决什么</span></a>
-    <a href="ch02.html"><span class="n">02</span><span>动手：注入器与键</span></a>
-    <a href="ch03.html"><span class="n">03</span><span>注入方式的取舍</span></a>
-    <a href="ch04.html"><span class="n">04</span><span>模块化与可测试性</span></a>
-  </nav>
-  <div class="sb-group">第二部分 · 状态与行为</div>
-  <nav class="sb-nav">
-    <a href="ch05.html"><span class="n">05</span><span>作用域：状态的容器</span></a>
-    <a href="ch06.html"><span class="n">06</span><span>自定义作用域与陷阱</span></a>
-    <a href="ch07.html"><span class="n">07</span><span>对象生命周期</span></a>
-    <a href="ch08.html"><span class="n">08</span><span>拦截、代理与 AOP</span></a>
-  </nav>
-  <div class="sb-group">第三部分 · 工程</div>
-  <nav class="sb-nav">
-    <a href="ch09.html"><span class="n">09</span><span>并发、可见性与设计</span></a>
-    <a href="ch10.html"><span class="n">10</span><span>与第三方框架集成</span></a>
-    <a class="on" aria-current="page" href="ch11.html"><span class="n">11</span><span>实战：Crosstalk</span></a>
-  </nav>
-  <div class="sb-group">附录</div>
-  <nav class="sb-nav">
-    <a href="appendix-a.html"><span class="n">A</span><span>2009 → 2026 迁移总表</span></a>
-    <a href="appendix-b.html"><span class="n">B</span><span>其他容器与术语表</span></a>
-  </nav>
-</aside>
+<body data-page="ch11">
+<div id="app">
+<aside id="sidebar"></aside>
+<main>
 
-<main class="main"><div class="wrap">
 
-<section class="chapter" id="ch11">
-  <p class="eyebrow">第 11 章</p>
-  <h2 class="title">实战：Crosstalk</h2>
+  <span class="chapter-eyebrow">第 11 章</span>
+  <h1>实战：Crosstalk</h1>
   <p class="lede">最后一章把前十章串起来：一个微博客（Twitter 克隆）的完整实现。它足够小，能在几页纸里讲完；又足够真，涵盖了<strong>表现层、持久层、安全层、模块边界、作用域、拦截、生命周期</strong>——每一样都能在前面的章节里找到出处。</p>
   <ul class="chips">
     <li>Guice + Hibernate + Sitebricks</li>
@@ -64,8 +23,9 @@
     <li>安全拦截器</li>
     <li>PersistenceFilter 生命周期</li>
   </ul>
+  <nav id="chapter-toc"></nav>
 
-  <h3><span class="sec">11.1</span>需求与技术选型</h3>
+  <h2 id="s11-1"><span class="sec">11.1</span>需求与技术选型</h2>
   <p>需求极简：<strong>用户登录后，在自己的主页上发短消息（tweet）。</strong>由此推出三件事——认证用户、保护主页、把 tweet 存进数据库；外加一个非功能要求：并发。</p>
   <p>2009 年的选型（括号里是它今天的状况）：</p>
   <div class="tw compact"><table>
@@ -81,8 +41,8 @@
   </table></div>
   <p><em>注意最后一行。书里用一整页表格列出要手动下载的 jar——这本身就是那个年代的注脚。</em></p>
 
-  <h3><span class="sec">11.2</span>组装：一个类说清全部接线</h3>
-<pre><code>public final class CrosstalkBootstrap extends GuiceServletContextListener {
+  <h2 id="s11-2"><span class="sec">11.2</span>组装：一个类说清全部接线</h2>
+<div class="code" data-lang="java"><pre><code>public final class CrosstalkBootstrap extends GuiceServletContextListener {
     @Override protected Injector getInjector() {
 
         Module services = new ServicesModule();                    <i>// ① 数据 + 安全</i>
@@ -103,7 +63,7 @@
 
         return Guice.createInjector(services, servlets);
     }
-}</code></pre>
+}</code></pre></div>
   <p>这个类就是<strong>第 1 章说的"应用启动器"</strong>——它调用注入器，而它自己不参与任何业务行为。整个应用只有这一处调用了容器。</p>
   <p><code>web.xml</code> 里只剩两件事：把所有请求交给 <code>GuiceFilter</code>，以及注册这个启动器。</p>
 
@@ -111,39 +71,39 @@
   <div class="scroller">
   <svg viewBox="0 0 880 320" role="img" aria-label="Crosstalk 的请求流经过滤器链、页面类、服务层到数据库，各组件标注了所属作用域" xmlns="http://www.w3.org/2000/svg">
     <defs><marker id="e1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
-    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+    <g font-size="11" fill="currentColor" style="font-family:var(--mono)">
 
       <rect x="16" y="120" width="86" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
       <text x="59" y="147" text-anchor="middle" font-size="10">浏览器</text>
       <line x1="104" y1="142" x2="142" y2="142" stroke="currentColor" stroke-width="1.2" marker-end="url(#e1)"/>
 
-      <rect x="146" y="112" width="106" height="60" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
-      <text x="199" y="132" text-anchor="middle" font-size="9.5" fill="#0C6660">GuiceFilter</text>
-      <text x="199" y="148" text-anchor="middle" font-size="9.5" fill="#0C6660">Persistence</text>
-      <text x="199" y="162" text-anchor="middle" font-size="9.5" fill="#0C6660">Filter</text>
+      <rect x="146" y="112" width="106" height="60" rx="3" fill="none" stroke-width="1.4" style="stroke:var(--green)"/>
+      <text x="199" y="132" text-anchor="middle" font-size="9.5" style="fill:var(--green)">GuiceFilter</text>
+      <text x="199" y="148" text-anchor="middle" font-size="9.5" style="fill:var(--green)">Persistence</text>
+      <text x="199" y="162" text-anchor="middle" font-size="9.5" style="fill:var(--green)">Filter</text>
       <text x="199" y="188" text-anchor="middle" font-size="8.5" opacity=".6">开启工作单元</text>
       <line x1="254" y1="142" x2="292" y2="142" stroke="currentColor" stroke-width="1.2" marker-end="url(#e1)"/>
 
-      <rect x="296" y="86" width="120" height="46" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
-      <text x="356" y="105" text-anchor="middle" font-size="10" fill="#A94A16">LoginPage</text>
-      <text x="356" y="120" text-anchor="middle" font-size="8.5" fill="#A94A16">@RequestScoped</text>
-      <rect x="296" y="152" width="120" height="46" rx="3" fill="none" stroke="#A94A16" stroke-width="1.4"/>
-      <text x="356" y="171" text-anchor="middle" font-size="10" fill="#A94A16">HomePage</text>
-      <text x="356" y="186" text-anchor="middle" font-size="8.5" fill="#A94A16">@RequestScoped</text>
+      <rect x="296" y="86" width="120" height="46" rx="3" fill="none" stroke-width="1.4" style="stroke:var(--accent)"/>
+      <text x="356" y="105" text-anchor="middle" font-size="10" style="fill:var(--accent)">LoginPage</text>
+      <text x="356" y="120" text-anchor="middle" font-size="8.5" style="fill:var(--accent)">@RequestScoped</text>
+      <rect x="296" y="152" width="120" height="46" rx="3" fill="none" stroke-width="1.4" style="stroke:var(--accent)"/>
+      <text x="356" y="171" text-anchor="middle" font-size="10" style="fill:var(--accent)">HomePage</text>
+      <text x="356" y="186" text-anchor="middle" font-size="8.5" style="fill:var(--accent)">@RequestScoped</text>
 
-      <rect x="296" y="222" width="120" height="42" rx="3" fill="none" stroke="#8E2A26" stroke-width="1.4" stroke-dasharray="4 3"/>
-      <text x="356" y="240" text-anchor="middle" font-size="9.5" fill="#8E2A26">Security</text>
-      <text x="356" y="254" text-anchor="middle" font-size="9.5" fill="#8E2A26">Interceptor</text>
-      <line x1="356" y1="218" x2="356" y2="202" stroke="#8E2A26" stroke-width="1.2" marker-end="url(#e1)"/>
-      <text x="424" y="248" font-size="8.5" fill="#8E2A26">拦截 @Get/@Post</text>
-      <text x="424" y="262" font-size="8.5" fill="#8E2A26">（LoginPage 除外）</text>
+      <rect x="296" y="222" width="120" height="42" rx="3" fill="none" stroke-width="1.4" stroke-dasharray="4 3" style="stroke:var(--red)"/>
+      <text x="356" y="240" text-anchor="middle" font-size="9.5" style="fill:var(--red)">Security</text>
+      <text x="356" y="254" text-anchor="middle" font-size="9.5" style="fill:var(--red)">Interceptor</text>
+      <line x1="356" y1="218" x2="356" y2="202" stroke-width="1.2" marker-end="url(#e1)" style="stroke:var(--red)"/>
+      <text x="424" y="248" font-size="8.5" style="fill:var(--red)">拦截 @Get/@Post</text>
+      <text x="424" y="262" font-size="8.5" style="fill:var(--red)">（LoginPage 除外）</text>
 
       <line x1="418" y1="175" x2="456" y2="175" stroke="currentColor" stroke-width="1.2" marker-end="url(#e1)"/>
       <line x1="418" y1="109" x2="456" y2="122" stroke="currentColor" stroke-width="1.2" marker-end="url(#e1)"/>
 
-      <rect x="460" y="98" width="126" height="44" rx="3" fill="none" stroke="#0C6660" stroke-width="1.4"/>
-      <text x="523" y="117" text-anchor="middle" font-size="10" fill="#0C6660">User</text>
-      <text x="523" y="132" text-anchor="middle" font-size="8.5" fill="#0C6660">@SessionScoped</text>
+      <rect x="460" y="98" width="126" height="44" rx="3" fill="none" stroke-width="1.4" style="stroke:var(--green)"/>
+      <text x="523" y="117" text-anchor="middle" font-size="10" style="fill:var(--green)">User</text>
+      <text x="523" y="132" text-anchor="middle" font-size="8.5" style="fill:var(--green)">@SessionScoped</text>
 
       <rect x="460" y="154" width="126" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="1.2"/>
       <text x="523" y="173" text-anchor="middle" font-size="10">TweetManager</text>
@@ -158,9 +118,9 @@
       <text x="833" y="181" text-anchor="middle" font-size="9.5">HSQL</text>
 
       <text x="16" y="36" font-size="10" opacity=".6">作用域从左到右逐级收窄再放宽：</text>
-      <text x="16" y="54" font-size="9.5" fill="#0C6660">■ 单例（filter、服务）</text>
-      <text x="180" y="54" font-size="9.5" fill="#A94A16">■ 请求（页面）</text>
-      <text x="300" y="54" font-size="9.5" fill="#0C6660">■ 会话（User）</text>
+      <text x="16" y="54" font-size="9.5" style="fill:var(--green)">■ 单例（filter、服务）</text>
+      <text x="180" y="54" font-size="9.5" style="fill:var(--accent)">■ 请求（页面）</text>
+      <text x="300" y="54" font-size="9.5" style="fill:var(--green)">■ 会话（User）</text>
       <text x="430" y="54" font-size="9.5" opacity=".7">注意：单例的 TweetManager 用 Provider 拿请求级的 Session</text>
       <text x="430" y="70" font-size="9.5" opacity=".7">—— 这是第 6 章 scope-widening 的标准解法</text>
 
@@ -171,7 +131,7 @@
   <figcaption><b>一张图对应七个章节。</b>过滤器管生命周期（第 7 章）、页面是请求作用域、<code>User</code> 是会话作用域（第 5 章）、拦截器做安全（第 8 章）、<code>Provider&lt;Session&gt;</code> 防越界（第 6 章）、服务是不可变单例（第 9 章）、包结构分三层（第 4、9 章）。</figcaption>
   </figure>
 
-  <h3><span class="sec">11.3</span>包结构：只暴露接口</h3>
+  <h2 id="s11-3"><span class="sec">11.3</span>包结构：只暴露接口</h2>
   <div class="tw compact"><table>
     <thead><tr><th>包</th><th>内容</th><th>可见性</th></tr></thead>
     <tbody>
@@ -182,8 +142,8 @@
   </table></div>
   <p>这正是第 9 章"只把接口、枚举、注解、抽象类设为 public"的落地。<strong>想把持久化从 Hibernate 换成别的？只动 <code>services</code> 包内部，表现层一行不改。</strong></p>
 
-  <h3><span class="sec">11.4</span>表现层：作用域的实战</h3>
-<pre><code>@At("/home") @Select("action") <b>@RequestScoped</b>
+  <h2 id="s11-4"><span class="sec">11.4</span>表现层：作用域的实战</h2>
+<div class="code" data-lang="java"><pre><code>@At("/home") @Select("action") <b>@RequestScoped</b>
 public class HomePage {
     private final TweetManager tweetManager;    <i>// 单例服务</i>
     private final User user;                    <i>// 会话作用域</i>
@@ -208,9 +168,9 @@ public class HomePage {
         user.logout();
         return "/login?message=Bye.";
     }
-}</code></pre>
-  <div class="box note">
-    <span class="tag">两个值得停下来看的细节</span>
+}</code></pre></div>
+  <div class="box key">
+    <div class="t">两个值得停下来看的细节</div>
     <ul>
       <li><strong>把会话作用域注入请求作用域是安全的</strong>——宽的注入进窄的，没有越界风险（第 5 章那张时间线图的下半句）。反过来才危险。</li>
       <li><code>newTweet</code> 在<strong>字段初始化时</strong>就 new 好了。因为 <code>HomePage</code> 每个请求一个新实例，所以每个请求自然拿到一个干净的 <code>Tweet</code>，<strong>不可能被上个请求的数据污染</strong>。这是"用作用域代替手工状态管理"最典型的一笔。</li>
@@ -218,17 +178,17 @@ public class HomePage {
   </div>
 
   <p><code>User</code> 就是第 5 章那个 <code>UserContext</code> 的实战版：</p>
-<pre><code>@SessionScoped @NotThreadSafe
+<div class="code" data-lang="java"><pre><code>@SessionScoped @NotThreadSafe
 public class User {
     private String username;
     public String getUsername()          { return username; }
     public void login(String username)   { this.username = username; }
     public void logout()                 { this.username = null; }
-}</code></pre>
+}</code></pre></div>
   <p>整个应用里再没有任何一处读写 <code>HttpSession</code>——<strong>"当前是谁"这件事被完全隐藏在作用域后面</strong>。</p>
 
-  <h3><span class="sec">11.5</span>持久层</h3>
-<pre><code>@Immutable @Singleton
+  <h2 id="s11-5"><span class="sec">11.5</span>持久层</h2>
+<div class="code" data-lang="java"><pre><code>@Immutable @Singleton
 class HibernateTweetManager implements TweetManager {     <i>// 注意：包级私有</i>
     private final <b>Provider&lt;Session&gt;</b> session;              <i>// ← 不是 Session</i>
 
@@ -240,10 +200,10 @@ class HibernateTweetManager implements TweetManager {     <i>// 注意：包级�
     }
 
     public void addTweet(Tweet tweet) { session.get().save(tweet); }
-}</code></pre>
+}</code></pre></div>
   <p>三个模式同时出现在这十行里：<strong>Provider 防作用域越界</strong>（第 3、6 章）、<strong>不可变单例</strong>（第 9 章）、<strong>方法装饰</strong>（第 3 章的 AOP 注入——<code>@Finder</code> 让一个空方法变成查询）。</p>
   <p>用户管理则用了一个硬编码的实现，但仍然演示了正确姿势：</p>
-<pre><code>@Immutable @Singleton
+<div class="code" data-lang="java"><pre><code>@Immutable @Singleton
 class InMemoryUserManager implements UserManager {
     private final Map&lt;String, String&gt; users;
 
@@ -255,20 +215,20 @@ class InMemoryUserManager implements UserManager {
     public boolean authenticate(String u, String p) {
         return users.containsKey(u) &amp;&amp; users.get(u).equals(p);
     }
-}</code></pre>
+}</code></pre></div>
   <p><em>注意这里做对了第 9 章谜题 4 的功课：局部变量构造完毕后立即冻结，没有任何外部引用能改它。</em></p>
 
-  <h3><span class="sec">11.6</span>安全层与生命周期</h3>
-<pre><code>bindInterceptor(
+  <h2 id="s11-6"><span class="sec">11.6</span>安全层与生命周期</h2>
+<div class="code" data-lang="java"><pre><code>bindInterceptor(
         <b>not(subclassesOf(LoginPage.class))</b>,                          <i>// 除了登录页</i>
         annotatedWith(Get.class).or(annotatedWith(Post.class)),       <i>// 所有事件方法</i>
-        new SecurityInterceptor(manager));</code></pre>
-<pre><code>class SecurityInterceptor implements MethodInterceptor {
+        new SecurityInterceptor(manager));</code></pre></div>
+<div class="code" data-lang="java"><pre><code>class SecurityInterceptor implements MethodInterceptor {
     public Object invoke(MethodInvocation mi) throws Throwable {
         if (authenticationManager.isLoggedIn()) return mi.proceed();
         return "/login";                        <i>// 未登录 → 直接重定向，目标方法不执行</i>
     }
-}</code></pre>
+}</code></pre></div>
   <p>第 8 章说的"拦截器能<em>阻止</em>调用"，这就是最典型的用法。安全策略集中在一处声明，页面类里一行安全代码都没有。</p>
   <p>生命周期方面，<code>PersistenceFilter</code> 一个组件挑了两副担子：</p>
   <ul>
@@ -276,8 +236,8 @@ class InMemoryUserManager implements UserManager {
     <li>每个请求：开启和关闭一个 Hibernate 工作单元——<strong>这就是第 5、6 章的请求作用域</strong>。</li>
   </ul>
 
-  <div class="box now">
-    <span class="tag">2026 对照：把 Crosstalk 重写一遍</span>
+  <div class="box tip">
+    <div class="t">2026 对照：把 Crosstalk 重写一遍</div>
     <p>这一章的架构<strong>完全成立</strong>，只是每一个零件都换了牌子。逐项映射：</p>
     <div class="tw"><table>
       <thead><tr><th>Crosstalk 2009</th><th>Spring Boot 4（2026）</th></tr></thead>
@@ -298,7 +258,7 @@ class InMemoryUserManager implements UserManager {
       </tbody>
     </table></div>
     <p>整个应用的现代版本大概长这样：</p>
-<pre><code>@Entity
+<div class="code" data-lang="java"><pre><code>@Entity
 class Tweet {
     @Id @GeneratedValue Long id;
     String author;
@@ -327,9 +287,9 @@ class HomeController {                                  <i>// 单例，不是请
         tweets.save(new Tweet(user.getUsername(), text));
         return "redirect:/home";
     }
-}</code></pre>
-    <div class="box note" style="margin-top:14px">
-      <span class="tag">最值得注意的一个变化</span>
+}</code></pre></div>
+    <div class="box key">
+      <div class="t">最值得注意的一个变化</div>
       <p>现代版的控制器是<strong>单例</strong>，不是请求作用域。"当前用户"通过<strong>方法参数</strong>（<code>@AuthenticationPrincipal</code>）传进来，而不是通过一个会话作用域的字段。</p>
       <p>这是一次真实的观念迁移：<strong>用无状态 + 显式传参，代替有状态 + 作用域</strong>。原因正是第 5、6 两章列的那些代价——作用域越界、线程安全、内存泄漏、测不出来。今天的默认答案是：<em>能不用作用域就不用；请求相关的数据用参数传，别放进字段。</em></p>
       <p>作者关于作用域的全部技术论述依然正确，只是行业在"什么时候<em>该</em>用它"这个问题上变保守了——和第 6 章"自定义作用域"的结论一致。</p>
@@ -337,16 +297,15 @@ class HomeController {                                  <i>// 单例，不是请
   </div>
 
   <div class="box note">
-    <span class="tag">配套源码</span>
+    <div class="t">配套源码</div>
     <p><code>prasanna/crosstalk/</code> —— <code>src/com/wideplay/crosstalk/CrosstalkBootstrap.java</code>、<code>services/</code>（<code>TweetManager</code>/<code>HibernateTweetManager</code>/<code>UserManager</code>/<code>InMemoryUserManager</code>/<code>AuthenticationManager</code>/<code>HttpSessionAuthenticationManager</code>/<code>SecurityInterceptor</code>/<code>ServicesModule</code>）、<code>tweets/Tweet.java</code>、<code>web/</code>（<code>HomePage</code>/<code>LoginPage</code>/<code>User</code>）、<code>web/home.html</code>、<code>web/WEB-INF/login.html</code>。<strong>注意：<code>web/WEB-INF/lib/</code> 里的 jar 全是 2009 年的，这个工程无法直接运行——当作架构范本读。</strong></p>
   </div>
 
-  <div class="pager"><a href="ch10.html"><span>上一章</span>10 · 与第三方框架集成</a><a class="next" href="appendix-a.html"><span>下一章</span>附录 A · 2009 → 2026 迁移总表</a></div>
-</section>
+  <nav id="pager"></nav>
 
 <footer class="site-foot">基于 Dhanji R. Prasanna, <i>Dependency Injection: Design patterns using Spring and Guice</i> (Manning, 2009) 整理的学习笔记；配套源码见仓库 <code>prasanna/</code> 目录。键盘 ← / → 可切换章节。</footer>
 
-</div></main>
+</main>
 </div>
 <script src="assets/app.js"></script>
 </body>
